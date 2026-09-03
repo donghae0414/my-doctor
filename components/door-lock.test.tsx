@@ -32,10 +32,13 @@ describe("DoorLock", () => {
     kyPost.mockResolvedValue(response(204))
     render(<DoorLock />)
 
-    // When: the code is entered through the keypad and submitted with #.
+    // When: the code is entered through the keypad and submitted with *.
     for (const digit of ["1", "2", "3", "4"])
       await user.click(screen.getByRole("button", { name: digit }))
-    await user.click(screen.getByRole("button", { name: "접근 코드 제출" }))
+    const submitButton = screen.getByRole("button", { name: "접근 코드 제출" })
+    expect(submitButton).toHaveTextContent("*")
+    expect(screen.getByRole("button", { name: "한 자리 지우기" })).toHaveTextContent("#")
+    await user.click(submitButton)
 
     // Then: the value stays masked, the endpoint receives only the code, and the root refreshes.
     expect(screen.getByLabelText("접근 코드")).toHaveAttribute("type", "password")
@@ -53,7 +56,7 @@ describe("DoorLock", () => {
     await waitFor(() => expect(refresh).toHaveBeenCalledOnce())
   })
 
-  it("supports digit keys, Backspace, star deletion, and Enter submission", async () => {
+  it("supports digit keys, Backspace, pound deletion, and star submission", async () => {
     // Given: keyboard focus is on the accessible password input.
     const user = userEvent.setup()
     kyPost.mockResolvedValue(response(204))
@@ -61,8 +64,8 @@ describe("DoorLock", () => {
     const input = screen.getByLabelText("접근 코드")
     input.focus()
 
-    // When: digits are appended, Backspace and * remove one each, then Enter submits.
-    await user.keyboard("12345{Backspace}6*{Enter}")
+    // When: digits are appended, Backspace and # remove one each, then * submits.
+    await user.keyboard("12345{Backspace}6#*")
 
     // Then: the keyboard path submits the resulting four digits.
     expect(kyPost).toHaveBeenCalledWith(

@@ -101,12 +101,12 @@ export function DoorLock() {
       appendDigit(event.key)
       return
     }
-    if (event.key === "Backspace" || event.key === "*") {
+    if (event.key === "Backspace" || event.key === "#") {
       event.preventDefault()
       removeDigit()
       return
     }
-    if (event.key === "Enter" || event.key === "#") {
+    if (event.key === "Enter" || event.key === "*") {
       event.preventDefault()
       void submit()
     }
@@ -225,8 +225,8 @@ export function DoorLock() {
             className="m-0 grid grid-cols-3 gap-3 border-0 p-0"
           >
             {KEYPAD_KEYS.map((key) => {
-              const isDelete = key === "*"
-              const isSubmit = key === "#"
+              const isDelete = key === "#"
+              const isSubmit = key === "*"
               const label = isDelete ? "한 자리 지우기" : isSubmit ? "접근 코드 제출" : key
               return (
                 <m.div
