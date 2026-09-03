@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "skills": {
+    "expert-domain-priming": {
+      "source": "treylom/prompt-engineering-skills",
+      "sourceType": "github",
+      "skillPath": "skills/expert-domain-priming/SKILL.md",
+      "computedHash": "5410b8295126ca5e3b726e3291b521f16cf8efe595fe0d45646035c666ccd0b2"
+    },
+    "gpt-5-6-prompt-enhancement": {
+      "source": "treylom/prompt-engineering-skills",
+      "sourceType": "github",
+      "skillPath": "skills/gpt-5.6-prompt-enhancement/SKILL.md",
+      "computedHash": "16ab42cd005d76c504bf140c6152cc334f9b59cfe65a39e3711e9b0288224ac5"
+    },
+    "prompt": {
+      "source": "treylom/prompt-engineering-skills",
+      "sourceType": "github",
+      "skillPath": "skills/prompt/SKILL.md",
+      "computedHash": "7da4ba5cbc8894590849388d9aaf30fb8e70bf1157ca0b1e9d0f7e2eb2f123df"
+    },
+    "prompt-engineering-guide": {
+      "source": "treylom/prompt-engineering-skills",
+      "sourceType": "github",
+      "skillPath": "skills/prompt-engineering-guide/SKILL.md",
+      "computedHash": "3c4ec7c98b5a67fd03d638d90de80165d99d3db8814d559219835394ae979f1f"
+    },
+    "prompt-variation-guide": {
+      "source": "treylom/prompt-engineering-skills",
+      "sourceType": "github",
+      "skillPath": "skills/prompt-variation-guide/SKILL.md",
+      "computedHash": "300635870572eacd2248254cf28107abdd8256e5d0b3aad9cef6e5d1dd04134d"
+    },
+    "research-prompt-guide": {
+      "source": "treylom/prompt-engineering-skills",
+      "sourceType": "github",
+      "skillPath": "skills/research-prompt-guide/SKILL.md",
+      "computedHash": "6c1a7faaa02b46c3e69756bc8f1c4767fa4e55a0f9eaf026eb7d798a43588927"
+    }
+  }
+}
