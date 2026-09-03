@@ -1,16 +1,46 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { act, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai"
-import { beforeAll, describe, expect, it, vi } from "vitest"
+import { type ComponentProps, StrictMode } from "react"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { renderWithMotion as render } from "@/tests/render-with-motion"
+import { ChatMessage } from "./chat-message"
 import { ChatShell } from "./chat-shell"
+
+const motionMocks = vi.hoisted(() => ({ reduceMotion: false }))
+
+vi.mock("motion/react", async (importOriginal) => {
+  const original = await importOriginal<typeof import("motion/react")>()
+  return {
+    ...original,
+    useReducedMotion: () => motionMocks.reduceMotion,
+  }
+})
+
+vi.mock("streamdown", async (importOriginal) => {
+  const original = await importOriginal<typeof import("streamdown")>()
+  const ActualStreamdown = original.Streamdown
+  return {
+    ...original,
+    Streamdown: ({ mode, ...props }: ComponentProps<typeof ActualStreamdown>) => (
+      <div data-streamdown-mode={mode}>
+        <ActualStreamdown {...(mode === undefined ? {} : { mode })} {...props} />
+      </div>
+    ),
+  }
+})
 
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
     configurable: true,
     value: vi.fn(),
   })
+})
+
+afterEach(() => {
+  motionMocks.reduceMotion = false
+  vi.useRealTimers()
 })
 
 function stream(chunks: readonly UIMessageChunk[]): ReadableStream<UIMessageChunk> {
@@ -26,6 +56,14 @@ function transportFor(chunks: readonly UIMessageChunk[]): ChatTransport<UIMessag
   return {
     reconnectToStream: async () => null,
     sendMessages: async () => stream(chunks),
+  }
+}
+
+function assistantMessage(id: string, text: string): UIMessage {
+  return {
+    id,
+    role: "assistant",
+    parts: [{ type: "text", text }],
   }
 }
 
@@ -50,6 +88,155 @@ const successfulChunks = [
 ] satisfies readonly UIMessageChunk[]
 
 describe("ChatShell", () => {
+  it("reveals the first grapheme immediately and accelerates from the queued backlog", () => {
+    vi.useFakeTimers()
+    render(<ChatMessage message={assistantMessage("assistant-cadence", "ABCDEFGH")} streaming />)
+
+    const response = screen.getByText("A").closest("article")
+    expect(response).not.toBeNull()
+    expect(response).toHaveTextContent(/^A$/u)
+
+    act(() => vi.advanceTimersByTime(4))
+    expect(response).toHaveTextContent(/^A$/u)
+    act(() => vi.advanceTimersByTime(1))
+    expect(response).toHaveTextContent(/^AB$/u)
+
+    act(() => vi.advanceTimersByTime(9))
+    expect(response).toHaveTextContent(/^AB$/u)
+    act(() => vi.advanceTimersByTime(1))
+    expect(response).toHaveTextContent(/^ABC$/u)
+
+    act(() => vi.advanceTimersByTime(15))
+    expect(response).toHaveTextContent(/^ABCD$/u)
+    act(() => vi.advanceTimersByTime(20))
+    expect(response).toHaveTextContent(/^ABCDE$/u)
+    act(() => vi.advanceTimersByTime(25))
+    expect(response).toHaveTextContent(/^ABCDEF$/u)
+    act(() => vi.advanceTimersByTime(30))
+    expect(response).toHaveTextContent(/^ABCDEFG$/u)
+    act(() => vi.advanceTimersByTime(30))
+    expect(response).toHaveTextContent(/^ABCDEFGH$/u)
+  })
+
+  it("flushes terminal text and never replays it after reduced motion is disabled", () => {
+    vi.useFakeTimers()
+    const message = assistantMessage("assistant-terminal", "ABCDEFGH")
+    const { rerender } = render(<ChatMessage message={message} streaming />)
+
+    const response = screen.getByText("A").closest("article")
+    expect(response).not.toBeNull()
+    expect(response).toHaveTextContent(/^A$/u)
+
+    motionMocks.reduceMotion = true
+    rerender(<ChatMessage message={message} streaming />)
+    expect(response).toHaveTextContent(/^ABCDEFGH$/u)
+    expect(document.querySelector("[data-streamdown-mode='static']")).not.toBeNull()
+
+    act(() => vi.advanceTimersByTime(1_000))
+    expect(response).toHaveTextContent(/^ABCDEFGH$/u)
+
+    motionMocks.reduceMotion = false
+    rerender(<ChatMessage message={message} streaming />)
+    expect(response).toHaveTextContent(/^ABCDEFGH$/u)
+    expect(document.querySelector("[data-streamdown-mode='streaming']")).not.toBeNull()
+
+    rerender(
+      <ChatMessage message={assistantMessage("assistant-terminal", "ABCDEFGHI")} streaming />,
+    )
+    expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
+  })
+
+  it("flushes a pending queue on normal completion and ignores stale timer callbacks", () => {
+    vi.useFakeTimers()
+    const message = assistantMessage("assistant-finish", "ABCDEFGHI")
+    const { rerender } = render(<ChatMessage message={message} streaming />)
+
+    const response = screen.getByText("A").closest("article")
+    expect(response).toHaveTextContent(/^A$/u)
+    expect(document.querySelector("[data-streamdown-mode='streaming']")).not.toBeNull()
+
+    rerender(<ChatMessage message={message} streaming={false} />)
+    expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
+    expect(document.querySelector("[data-streamdown-mode='static']")).not.toBeNull()
+
+    act(() => vi.advanceTimersByTime(1_000))
+    expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
+  })
+
+  it("reconstructs pending graphemes after Strict Mode effect replay", () => {
+    vi.useFakeTimers()
+    render(
+      <StrictMode>
+        <ChatMessage message={assistantMessage("assistant-strict", "ABCDEFGH")} streaming />
+      </StrictMode>,
+    )
+
+    const response = screen.getByText("A").closest("article")
+    expect(response).toHaveTextContent(/^A$/u)
+    act(() => vi.advanceTimersByTime(140))
+    expect(response).toHaveTextContent(/^ABCDEFGH$/u)
+  })
+
+  it("clears a pending reveal timer when the message unmounts", () => {
+    vi.useFakeTimers()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    try {
+      const { unmount } = render(
+        <ChatMessage message={assistantMessage("assistant-unmount", "ABCDEFGH")} streaming />,
+      )
+      expect(screen.getByText("A")).toBeVisible()
+
+      unmount()
+      act(() => vi.advanceTimersByTime(1_000))
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it("resets queued text when the message identity or received prefix changes", () => {
+    vi.useFakeTimers()
+    const { rerender } = render(
+      <ChatMessage message={assistantMessage("assistant-old", "OLD TEXT")} streaming />,
+    )
+
+    const response = screen.getByText("O").closest("article")
+    expect(response).not.toBeNull()
+    expect(response).toHaveTextContent(/^O$/u)
+
+    rerender(<ChatMessage message={assistantMessage("assistant-new", "NEW")} streaming />)
+    expect(response).toHaveTextContent(/^N$/u)
+    act(() => vi.advanceTimersByTime(1_000))
+    expect(response).toHaveTextContent(/^NEW$/u)
+
+    rerender(<ChatMessage message={assistantMessage("assistant-new", "FIXED")} streaming />)
+    expect(response).toHaveTextContent(/^F$/u)
+    act(() => vi.advanceTimersByTime(1_000))
+    expect(response).toHaveTextContent(/^FIXED$/u)
+    expect(response).not.toHaveTextContent(/OLD/u)
+  })
+
+  it("prioritizes immediate display when a later delta extends the trailing grapheme", () => {
+    vi.useFakeTimers()
+    const { rerender } = render(
+      <ChatMessage message={assistantMessage("assistant-grapheme", "ᄀ")} streaming />,
+    )
+
+    const response = screen.getByText("ᄀ").closest("article")
+    expect(response).not.toBeNull()
+    expect(response).toHaveTextContent(/^ᄀ$/u)
+
+    rerender(<ChatMessage message={assistantMessage("assistant-grapheme", "가")} streaming />)
+    expect(response?.textContent).toBe("가")
+
+    rerender(<ChatMessage message={assistantMessage("assistant-grapheme", "👩")} streaming />)
+    expect(response?.textContent).toBe("👩")
+    rerender(<ChatMessage message={assistantMessage("assistant-grapheme", "👩‍")} streaming />)
+    expect(response?.textContent).toBe("👩‍")
+    rerender(<ChatMessage message={assistantMessage("assistant-grapheme", "👩‍⚕️")} streaming />)
+    expect(response?.textContent).toBe("👩‍⚕️")
+  })
+
   it("centers the initial composer with the fixed model and six effort choices", async () => {
     render(<ChatShell transport={transportFor(successfulChunks)} />)
 
@@ -133,6 +320,7 @@ describe("ChatShell", () => {
 
   it("passes the selected effort, exposes stop while streaming, and keeps partial text", async () => {
     const user = userEvent.setup()
+    const streamedText = "첫 번째 안내".repeat(20)
     let streamController: ReadableStreamDefaultController<UIMessageChunk> | undefined
     const sendMessages = vi.fn(
       async ({ abortSignal }: Parameters<ChatTransport<UIMessage>["sendMessages"]>[0]) => {
@@ -141,7 +329,7 @@ describe("ChatShell", () => {
             streamController = controller
             controller.enqueue({ type: "start", messageId: "assistant-stream" })
             controller.enqueue({ type: "text-start", id: "answer" })
-            controller.enqueue({ type: "text-delta", id: "answer", delta: "첫 번째 안내" })
+            controller.enqueue({ type: "text-delta", id: "answer", delta: streamedText })
             expect(abortSignal).toBeDefined()
           },
         })
@@ -157,21 +345,21 @@ describe("ChatShell", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "추론 강도" }), "xhigh")
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "질문")
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
-    expect(await screen.findByText("첫 번째 안내")).toBeVisible()
-    expect(screen.getByText("첫 번째 안내").closest("article")).toHaveAttribute(
-      "data-streaming",
-      "true",
-    )
-    expect(screen.getByText("첫 번째 안내").closest("article")).toHaveAttribute(
-      "data-motion-state",
-      "instant",
-    )
+    const streamingArticle = await waitFor(() => {
+      const article = document.querySelector("article[data-streaming='true']")
+      expect(article?.textContent?.length).toBeGreaterThan(0)
+      return article
+    })
+    expect(streamingArticle).not.toHaveTextContent(streamedText)
+    expect(streamingArticle).toHaveAttribute("data-motion-state", "instant")
     await user.click(screen.getByRole("button", { name: "응답 중지" }))
 
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "응답 중지" })).not.toBeInTheDocument(),
+    expect(screen.queryByRole("button", { name: "응답 중지" })).not.toBeInTheDocument()
+    expect(screen.getByText(streamedText)).toBeVisible()
+    expect(screen.getByText(streamedText).closest("article")).toHaveAttribute(
+      "data-streaming",
+      "false",
     )
-    expect(screen.getByText("첫 번째 안내")).toBeVisible()
     expect(sendMessages).toHaveBeenCalledWith(
       expect.objectContaining({ body: { effort: "xhigh" } }),
     )

@@ -172,6 +172,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
                 message={message}
                 streaming={
                   status === "streaming" &&
+                  !isStopped &&
                   index === messages.length - 1 &&
                   message.role === "assistant"
                 }
