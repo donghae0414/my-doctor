@@ -7,3 +7,37 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Repository rules
+
+## Sources of truth
+
+- Use `package.json` for supported versions and commands.
+- Use `DESIGN.md` for visual decisions and the tweakcn theme contract.
+- Use `components.json` for shadcn/ui aliases and conventions.
+- Before changing Next.js behavior, read the relevant installed documentation under `node_modules/next/dist/docs/`.
+
+## Keep implementation direct
+
+- Prefer changing an existing file and following an existing pattern over introducing a new layer.
+- Do not create a service, repository, adapter, wrapper, or custom hook for a single caller merely for possible reuse.
+- Extract code when it removes real duplication or isolates a meaningful security, external-SDK, state, or test boundary.
+- Avoid components and functions that only forward arguments. Every layer must own a clear responsibility.
+- Keep data flow and call chains short. Do not design for hypothetical future requirements.
+- Keep focused tests close to the implementation they cover.
+
+## Framework and product boundaries
+
+- Default to Server Components. Add `"use client"` only at the smallest boundary that needs browser state or events.
+- Keep OpenAI calls and secrets in server code. Never expose `OPENAI_API_KEY`, `AUTH_SECRET`, or `DOORLOCK_PASSWORD` to the client.
+- Reuse the existing Vercel AI SDK `useChat` and `streamText` flow instead of creating a parallel chat protocol.
+- Preserve authentication, request validation, image-size limits, safe source filtering, and provider-error masking at API boundaries.
+- Reuse `components/ui` and the existing shadcn/ui patterns before adding a primitive.
+- Treat the tweakcn theme referenced by `DESIGN.md` as the token source. Do not introduce a parallel palette or arbitrary visual tokens.
+
+## Verification
+
+- Run the focused test for the changed behavior, then `pnpm lint` and `pnpm typecheck`.
+- Run `pnpm build` for routing, configuration, dependency, or production-boundary changes.
+- Run the relevant Playwright test when a user-visible flow changes.
+- Do not disable checks, suppress warnings, or weaken assertions to make verification pass.
