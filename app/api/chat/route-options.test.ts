@@ -111,14 +111,17 @@ describe("POST /api/chat provider contract", () => {
     const response = await POST(chatRequest())
     await response.text()
 
-    // Then: the fixed model, medical prompt, output cap, and required unrestricted search are used.
+    // Then: the fixed model, medical prompt, output cap, and Korea-located optional search are used.
     expect(openai).toHaveBeenCalledOnce()
     expect(openai).toHaveBeenCalledWith("gpt-5.6-sol")
     expect(mocks.webSearch).toHaveBeenCalledOnce()
-    expect(mocks.webSearch).toHaveBeenCalledWith({ externalWebAccess: true })
+    expect(mocks.webSearch).toHaveBeenCalledWith({
+      externalWebAccess: true,
+      userLocation: { type: "approximate", country: "KR" },
+    })
     const call = model.doStreamCalls[0]
     expect(call?.maxOutputTokens).toBe(4096)
-    expect(call?.toolChoice).toEqual({ type: "required" })
+    expect(call?.toolChoice).toEqual({ type: "auto" })
     expect(call?.providerOptions).toEqual({
       openai: {
         reasoningMode: "standard",

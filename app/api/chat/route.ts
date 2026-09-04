@@ -129,14 +129,17 @@ export async function POST(request: Request): Promise<Response> {
           )
         : openai(parsed.data.model)
     const tools = {
-      web_search: openai.tools.webSearch({ externalWebAccess: true }),
+      web_search: openai.tools.webSearch({
+        externalWebAccess: true,
+        userLocation: { type: "approximate", country: "KR" },
+      }),
     }
     const result = streamText({
       model,
       system: MEDICAL_SYSTEM_PROMPT,
       messages,
       tools,
-      toolChoice: "required",
+      toolChoice: "auto",
       maxOutputTokens: 4096,
       providerOptions: {
         openai: {
