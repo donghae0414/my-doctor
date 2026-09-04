@@ -8,7 +8,13 @@ import { REDUCED_OPACITY_TRANSITION, STATE_TRANSITION } from "@/components/motio
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-export type PromptInputStatus = "disabled" | "error" | "loading" | "ready" | "streaming"
+export type PromptInputStatus =
+  | "disabled"
+  | "error"
+  | "loading"
+  | "ready"
+  | "submitted"
+  | "streaming"
 
 export type PromptInputProps = Omit<ComponentProps<"form">, "onSubmit"> & {
   readonly allowEmpty?: boolean
@@ -41,8 +47,8 @@ export function PromptInput({
         "grid min-w-0 w-full gap-2 rounded-xl border border-input bg-card p-2 shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
         className,
       )}
-      onSubmit={submit}
       {...props}
+      onSubmit={submit}
     />
   )
 }
@@ -105,29 +111,40 @@ export type PromptInputSubmitProps = Omit<ComponentProps<typeof Button>, "disabl
   readonly status: PromptInputStatus
 }
 
-export function PromptInputSubmit({ children, status, ...props }: PromptInputSubmitProps) {
+export function PromptInputSubmit({
+  children,
+  className,
+  status,
+  ...props
+}: PromptInputSubmitProps) {
   const reduceMotion = useReducedMotion()
   const disabled = status === "disabled" || status === "loading"
-  const label = status === "streaming" ? "응답 중지" : "질문 보내기"
-  const stateIcon =
-    children ??
+  const isStopping = status === "submitted" || status === "streaming"
+  const label = isStopping ? "응답 중지" : "질문 보내기"
+  const stateIcon = isStopping ? (
+    <SquareIcon aria-hidden="true" />
+  ) : (
+    (children ??
     (status === "loading" ? (
       <LoaderCircleIcon aria-hidden="true" />
-    ) : status === "streaming" ? (
-      <SquareIcon aria-hidden="true" />
     ) : (
       <SendIcon aria-hidden="true" />
-    ))
+    )))
+  )
 
   return (
     <Button
+      {...props}
       aria-label={label}
       aria-live="polite"
+      className={cn(
+        disabled && "disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
+        className,
+      )}
       disabled={disabled}
       size="icon"
-      type={status === "streaming" ? "button" : "submit"}
+      type={isStopping ? "button" : "submit"}
       variant="default"
-      {...props}
     >
       <AnimatePresence initial={false} mode="sync">
         <m.span

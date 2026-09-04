@@ -63,7 +63,7 @@ export function ConversationEmptyState({
         {icon}
       </span>
       <p className="m-0 text-lg font-semibold text-foreground">{title}</p>
-      <p className="m-0 text-sm leading-5">{description}</p>
+      {description === null ? null : <p className="m-0 text-sm leading-5">{description}</p>}
     </div>
   )
 }

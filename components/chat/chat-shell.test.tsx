@@ -1,10 +1,11 @@
-import { act, screen, waitFor, within } from "@testing-library/react"
+import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai"
 import { type ComponentProps, StrictMode } from "react"
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { renderWithMotion as render } from "@/tests/render-with-motion"
+import { ChatComposer } from "./chat-composer"
 import { ChatMessage } from "./chat-message"
 import { ChatShell } from "./chat-shell"
 
@@ -239,7 +240,8 @@ describe("ChatShell", () => {
     expect(response?.textContent).toBe("👩‍⚕️")
   })
 
-  it("centers the initial composer with three model choices and six effort choices", async () => {
+  it("centers the initial composer with the selected model and effort menu defaults", async () => {
+    const user = userEvent.setup()
     render(<ChatShell transport={transportFor(successfulChunks)} />)
 
     expect(screen.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
@@ -247,15 +249,53 @@ describe("ChatShell", () => {
       "data-motion-surface",
       "composer",
     )
-    const model = screen.getByRole("combobox", { name: "모델" })
-    expect(within(model).getAllByRole("option")).toHaveLength(3)
-    expect(model).toHaveValue("gpt-5.6-sol")
-    expect(model).toHaveAttribute("data-model-id", "gpt-5.6-sol")
-    const effort = screen.getByRole("combobox", { name: "추론 강도" })
-    expect(within(effort).getAllByRole("option")).toHaveLength(6)
-    expect(effort).toHaveValue("medium")
-    await waitFor(() => expect(screen.getByText(/의료진의 진단을 대신하지 않으며/u)).toBeVisible())
+    const trigger = screen.getByRole("button", {
+      name: "모델 GPT-5.6 Sol, 추론 강도 보통",
+    })
+    expect(trigger).toHaveTextContent("GPT-5.6 Sol · 보통")
+    await user.click(trigger)
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(3)
+    expect(screen.getByRole("menuitemradio", { name: "GPT-5.6 Sol" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
+    expect(screen.getByRole("menuitemradio", { name: "GPT-5.6 Luna" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    )
+    screen.getByRole("menuitem", { name: "추론 강도" }).focus()
+    await user.keyboard("{ArrowRight}")
+    expect(await screen.findByRole("menuitemradio", { name: "보통" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(9)
+    expect(screen.getByText("AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.")).toBeVisible()
+    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
     expect(document.querySelectorAll("[data-scroll-owner='conversation']")).toHaveLength(1)
+  })
+
+  it("keeps the root menu open for model selection and closes from an effort selection", async () => {
+    const user = userEvent.setup()
+    render(<ChatShell transport={transportFor(successfulChunks)} />)
+    const trigger = screen.getByRole("button", {
+      name: "모델 GPT-5.6 Sol, 추론 강도 보통",
+    })
+
+    await user.click(trigger)
+    await user.click(screen.getByRole("menuitemradio", { name: "GPT-5.6 Terra" }))
+    expect(screen.getByRole("menuitemradio", { name: "GPT-5.6 Terra" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    )
+    expect(trigger).toHaveTextContent("GPT-5.6 Terra · 보통")
+
+    screen.getByRole("menuitem", { name: "추론 강도" }).focus()
+    await user.keyboard("{ArrowRight}")
+    await user.keyboard("{End}{Enter}")
+    await waitFor(() => expect(screen.queryByRole("menuitemradio")).not.toBeInTheDocument())
+    expect(trigger).toHaveFocus()
+    expect(trigger).toHaveAccessibleName("모델 GPT-5.6 Terra, 추론 강도 최대")
   })
 
   it("moves the composer to the bottom and renders right user text, Markdown, and safe sources", async () => {
@@ -358,12 +398,14 @@ describe("ChatShell", () => {
     }
     render(<ChatShell transport={transport} />)
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "모델" }), "gpt-5.6-terra")
-    expect(screen.getByRole("combobox", { name: "모델" })).toHaveAttribute(
-      "data-model-id",
-      "gpt-5.6-terra",
-    )
-    await user.selectOptions(screen.getByRole("combobox", { name: "추론 강도" }), "xhigh")
+    const modelTrigger = screen.getByRole("button", {
+      name: "모델 GPT-5.6 Sol, 추론 강도 보통",
+    })
+    await user.click(modelTrigger)
+    await user.click(screen.getByRole("menuitemradio", { name: "GPT-5.6 Terra" }))
+    screen.getByRole("menuitem", { name: "추론 강도" }).focus()
+    await user.keyboard("{ArrowRight}")
+    await user.keyboard("{End}{ArrowUp}{Enter}")
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "질문")
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
     const streamingArticle = await waitFor(() => {
@@ -376,6 +418,7 @@ describe("ChatShell", () => {
     await user.click(screen.getByRole("button", { name: "응답 중지" }))
 
     expect(screen.queryByRole("button", { name: "응답 중지" })).not.toBeInTheDocument()
+    expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(0)
     expect(screen.getByText(streamedText)).toBeVisible()
     expect(screen.getByText(streamedText).closest("article")).toHaveAttribute(
       "data-streaming",
@@ -385,6 +428,86 @@ describe("ChatShell", () => {
       expect.objectContaining({ body: { effort: "xhigh", model: "gpt-5.6-terra" } }),
     )
     expect(streamController).toBeDefined()
+  })
+
+  it("shows a muted disabled send until text or a ready attachment makes it sendable", async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn(async () => undefined)
+    const onHasAttachmentPreviews = vi.fn()
+    const { rerender } = render(
+      <ChatComposer
+        effort="medium"
+        model="gpt-5.6-sol"
+        onEffortChange={vi.fn()}
+        onHasAttachmentPreviews={onHasAttachmentPreviews}
+        onModelChange={vi.fn()}
+        onStop={vi.fn()}
+        onSubmit={onSubmit}
+        status="ready"
+      />,
+    )
+    const send = screen.getByRole("button", { name: "질문 보내기" })
+    expect(send).toBeDisabled()
+    expect(send).toHaveClass("disabled:bg-muted", "disabled:text-muted-foreground")
+
+    await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "   ")
+    expect(send).toBeDisabled()
+    await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "질문")
+    expect(send).toBeEnabled()
+    await user.click(send)
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ text: "질문" }))
+
+    rerender(
+      <ChatComposer
+        effort="medium"
+        model="gpt-5.6-sol"
+        onEffortChange={vi.fn()}
+        onHasAttachmentPreviews={onHasAttachmentPreviews}
+        onModelChange={vi.fn()}
+        onStop={vi.fn()}
+        onSubmit={onSubmit}
+        status="submitted"
+      />,
+    )
+    expect(screen.getByRole("button", { name: "응답 중지" })).toBeEnabled()
+    rerender(
+      <ChatComposer
+        effort="medium"
+        model="gpt-5.6-sol"
+        onEffortChange={vi.fn()}
+        onHasAttachmentPreviews={onHasAttachmentPreviews}
+        onModelChange={vi.fn()}
+        onStop={vi.fn()}
+        onSubmit={onSubmit}
+        status="streaming"
+      />,
+    )
+    expect(screen.getByRole("button", { name: "응답 중지" })).toBeEnabled()
+  })
+
+  it("reevaluates a retained draft after submitted, streaming, cancellation, and error states", async () => {
+    const user = userEvent.setup()
+    const properties = {
+      effort: "medium" as const,
+      model: "gpt-5.6-sol" as const,
+      onEffortChange: vi.fn(),
+      onHasAttachmentPreviews: vi.fn(),
+      onModelChange: vi.fn(),
+      onStop: vi.fn(),
+      onSubmit: vi.fn(),
+    }
+    const { rerender } = render(<ChatComposer {...properties} status="ready" />)
+    await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "보존할 질문")
+    expect(screen.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
+
+    rerender(<ChatComposer {...properties} status="submitted" />)
+    expect(screen.getByRole("button", { name: "응답 중지" })).toBeEnabled()
+    rerender(<ChatComposer {...properties} status="streaming" />)
+    expect(screen.getByRole("button", { name: "응답 중지" })).toBeEnabled()
+    rerender(<ChatComposer {...properties} status="ready" />)
+    expect(screen.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
+    rerender(<ChatComposer {...properties} status="error" />)
+    expect(screen.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
   })
 
   it("shows the pending status with the streaming marker before the response starts", async () => {
@@ -408,10 +531,13 @@ describe("ChatShell", () => {
     // so the status text sits flush with the composer and has no bubble background.
     expect(pendingArticle?.className).not.toMatch(/grid-cols-/u)
     expect(pendingArticle?.querySelector("[data-assistant-marker]")).toHaveClass("absolute")
+    expect(pendingArticle?.querySelector("[data-assistant-marker]")).toHaveClass("bg-primary")
     expect(pending.parentElement).not.toHaveClass("col-start-2")
     expect(pending).toHaveClass("text-muted-foreground")
     expect(pending).not.toHaveClass("bg-muted")
     expect(pending).not.toHaveClass("px-3")
+    await user.click(screen.getByRole("button", { name: "응답 중지" }))
+    await waitFor(() => expect(document.querySelector("[data-assistant-marker]")).toBeNull())
   })
 
   it("shows an exact offline terminal when network transport fails", async () => {
@@ -452,6 +578,14 @@ describe("ChatShell", () => {
     render(<ChatShell transport={transport} />)
 
     // When: the question is submitted.
+    const modelTrigger = screen.getByRole("button", {
+      name: "모델 GPT-5.6 Sol, 추론 강도 보통",
+    })
+    await user.click(modelTrigger)
+    await user.click(screen.getByRole("menuitemradio", { name: "GPT-5.6 Luna" }))
+    screen.getByRole("menuitem", { name: "추론 강도" }).focus()
+    await user.keyboard("{ArrowRight}")
+    await user.keyboard("{End}{ArrowUp}{ArrowUp}{Enter}")
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "제공자 오류 질문")
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
 
@@ -469,7 +603,10 @@ describe("ChatShell", () => {
     expect(screen.queryByText("제공자 오류 질문")).not.toBeInTheDocument()
     expect(screen.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
     expect(
-      screen.queryByRole("button", { name: /재생성|다시 생성|추론|다운로드/u }),
+      screen.getByRole("button", { name: "모델 GPT-5.6 Luna, 추론 강도 높음" }),
+    ).toHaveTextContent("GPT-5.6 Luna · 높음")
+    expect(
+      screen.queryByRole("button", { name: /재생성|다시 생성|다운로드/u }),
     ).not.toBeInTheDocument()
   })
 })

@@ -23,9 +23,7 @@ export function Message({ children, className, from, streaming = false, ...props
       animate={{ opacity: 1, y: 0 }}
       className={cn(
         "group w-full",
-        from === "user"
-          ? "flex flex-col items-end gap-2"
-          : "relative flex flex-col gap-2",
+        from === "user" ? "flex flex-col items-end gap-2" : "relative flex flex-col gap-2",
         className,
       )}
       data-from={from}
@@ -45,10 +43,16 @@ export function Message({ children, className, from, streaming = false, ...props
       {from === "assistant" ? (
         <>
           {streaming ? (
-            <span
+            <m.span
+              animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.96, 1] }}
               aria-hidden="true"
               className="absolute top-1.5 -start-[13px] size-2.5 rounded-full bg-primary"
               data-assistant-marker=""
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : { duration: 1.4, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }
+              }
             />
           ) : null}
           <div className="flex min-w-0 flex-col gap-2">{children}</div>

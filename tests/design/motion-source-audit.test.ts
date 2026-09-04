@@ -12,9 +12,13 @@ const SPATIAL_MOTION_ALLOWLIST = new Set([
 ])
 const SOURCE_EXTENSIONS = new Set([".css", ".ts", ".tsx"])
 const FORBIDDEN_MECHANISMS =
-  /(?:parallax|magnetic|ripple|requestAnimationFrame\s*\([^)]*scroll|addEventListener\s*\(\s*["']scroll|transition-all|repeat:\s*(?:Infinity|Number\.POSITIVE_INFINITY)|animate-spin)/u
+  /(?:parallax|magnetic|ripple|requestAnimationFrame\s*\([^)]*scroll|addEventListener\s*\(\s*["']scroll|transition-all|animate-spin)/u
 const SPATIAL_MOTION =
   /(?:whileTap=|\blayout(?:=|\s)|@keyframes|animate-\[|active:scale|transition-transform)/u
+const LOOP_REPEAT = /repeat\s*:/gu
+const ASSISTANT_MARKER_LOOP =
+  /<m\.span\b[\s\S]*?data-assistant-marker=""[\s\S]*?repeat:\s*Number\.POSITIVE_INFINITY[\s\S]*?\/>/u
+const ASSISTANT_MARKER_SOURCE = "components/ai-elements/message.tsx"
 
 function sourceFiles(directory: string): readonly string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -37,7 +41,26 @@ describe("Todo12 motion source contract", () => {
     expect(offenders).toEqual([])
   })
 
-  it("contains no forbidden loop, scroll-driven, or decorative motion mechanism", () => {
+  it("permits the assistant-marker loop only on its named motion element", () => {
+    // Given: every production frontend source file.
+    const offenders = SOURCE_ROOTS.flatMap(sourceFiles).flatMap((path) => {
+      const source = readFileSync(resolve(path), "utf8")
+      const repeats = source.match(LOOP_REPEAT) ?? []
+      return path === ASSISTANT_MARKER_SOURCE &&
+        repeats.length === 1 &&
+        ASSISTANT_MARKER_LOOP.test(source)
+        ? []
+        : repeats.length > 0
+          ? [path]
+          : []
+    })
+
+    // When: repeat declarations are audited against the one named motion element.
+    // Then: no source other than the streaming assistant marker owns a loop.
+    expect(offenders).toEqual([])
+  })
+
+  it("contains no forbidden scroll-driven or decorative motion mechanism", () => {
     // Given: every production frontend source file.
     const offenders = SOURCE_ROOTS.flatMap(sourceFiles).flatMap((path) => {
       const source = readFileSync(resolve(path), "utf8")
@@ -45,7 +68,7 @@ describe("Todo12 motion source contract", () => {
     })
 
     // When: forbidden Todo12 mechanisms are audited.
-    // Then: the product has no parallax, magnetic, ripple, loop, scroll listener, or layout tween.
+    // Then: the product has no parallax, magnetic, ripple, scroll listener, or layout tween.
     expect(offenders).toEqual([])
   })
 

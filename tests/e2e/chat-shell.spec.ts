@@ -15,6 +15,8 @@ const stagingRoot = resolve(evidenceRoot, "staging")
 const acceptedRoot = resolve(evidenceRoot, "accepted")
 const viewports = [375, 768, 1280] as const
 const themes = ["light", "dark"] as const
+const emptyPrompt = "산후 회복·아기 돌봄, 무엇이 궁금하세요?"
+const medicalDisclaimer = "AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요."
 
 test.describe.configure({ mode: "serial" })
 
@@ -47,11 +49,33 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   await openFixture(page)
 
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
-  await expect(page.getByRole("combobox", { name: "모델" })).toHaveValue("gpt-5.6-sol")
-  await expect(page.getByRole("combobox", { name: "모델" }).getByRole("option")).toHaveCount(3)
-  await expect(page.getByRole("combobox", { name: "추론 강도" })).toHaveValue("medium")
-  await expect(page.getByRole("combobox", { name: "추론 강도" }).getByRole("option")).toHaveCount(6)
-  await expect(page.getByText(/의료진의 진단을 대신하지 않으며/u)).toBeVisible()
+  await expect(page.getByRole("combobox")).toHaveCount(0)
+  const modelMenu = page.locator("button[aria-haspopup='menu']")
+  await expect(modelMenu).toBeVisible()
+  await expect(page.getByText(emptyPrompt, { exact: true })).toBeVisible()
+  await expect(page.getByText(medicalDisclaimer, { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "질문 보내기" })).toBeDisabled()
+  await modelMenu.click()
+  const modelItems = page.getByRole("menuitemradio")
+  await expect(modelItems).toHaveCount(3)
+  await expect(page.getByRole("menuitemradio", { name: "GPT-5.6 Sol" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  )
+  await page.getByRole("menuitemradio", { name: "GPT-5.6 Luna" }).click()
+  await expect(modelMenu).toHaveAttribute("aria-label", "모델 GPT-5.6 Luna, 추론 강도 보통")
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("menu")).toHaveCount(0)
+  await expect(modelMenu).toHaveAccessibleName("모델 GPT-5.6 Luna, 추론 강도 보통")
+  await expect(modelMenu).toBeFocused()
+  await modelMenu.focus()
+  await page.keyboard.press("ArrowDown")
+  const effortSubmenu = page.getByRole("menuitem", { exact: true, name: "추론 강도" })
+  await effortSubmenu.focus()
+  await page.keyboard.press("ArrowRight")
+  await expect(page.getByRole("menuitemradio")).toHaveCount(9)
+  await page.getByRole("menuitemradio", { name: "매우 높음" }).click()
+  await expect(modelMenu).toHaveAccessibleName("모델 GPT-5.6 Luna, 추론 강도 매우 높음")
   await assertChatGeometry(page)
 
   await page.getByRole("textbox", { name: "의료 질문" }).fill("빈 응답 확인")
@@ -61,15 +85,16 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   ).toBeVisible()
   await page.getByRole("button", { name: "새 대화" }).click()
 
-  await page.getByRole("combobox", { name: "추론 강도" }).selectOption("xhigh")
   await page
     .getByRole("textbox", { name: "의료 질문" })
     .fill("생후 3주 아기가 수유 뒤에 자주 토해요")
+  await expect(page.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expect(page.getByText("응답을 준비하고 있습니다.")).toBeVisible()
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "bottom")
   await expect(page.locator("article[data-from='user']")).toContainText("생후 3주")
   await expect(page.getByRole("button", { name: "응답 중지" })).toBeVisible()
+  await expect(page.getByRole("textbox", { name: "의료 질문" })).not.toBeDisabled()
   await expect(page.locator("html")).toHaveAttribute("data-last-effort", "xhigh")
   const streamingAssistant = page.locator("article[data-from='assistant']").last()
   const streamingAssistantBody = streamingAssistant.locator(":scope > div")
@@ -88,6 +113,21 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   expect(markerRect.left).toBeGreaterThanOrEqual(0)
   expect(markerRect.right).toBeLessThanOrEqual(streamingBodyLeft)
   expect(markerRect.visible).toBe(true)
+  const markerAnimation = await streamingAssistant
+    .locator("[data-assistant-marker]")
+    .evaluate((element) => {
+      const animation = element.getAnimations().at(0)
+      const effect = animation?.effect
+      if (!(effect instanceof KeyframeEffect)) return undefined
+      return {
+        keyframes: effect.getKeyframes().map((keyframe) => keyframe["opacity"]),
+        repeat: effect.getTiming().iterations,
+      }
+    })
+  expect(markerAnimation).toEqual({
+    keyframes: ["1", "0.96", "1"],
+    repeat: Number.POSITIVE_INFINITY,
+  })
 
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
@@ -151,6 +191,7 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
 
   await page.getByRole("textbox", { name: "의료 질문" }).fill("중지 확인")
   await page.getByRole("button", { name: "질문 보내기" }).click()
+  await expect(page.getByRole("button", { name: "응답 중지" })).toBeEnabled()
   await expect(page.getByText("응답을 준비하고 있습니다.").last()).toBeVisible()
   await page.getByRole("button", { name: "응답 중지" }).click()
   await expect(page.locator("[data-chat-state]")).toHaveAttribute("data-stream-stopped", "true")
@@ -160,7 +201,7 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   await page.getByRole("textbox", { name: "의료 질문" }).fill("오류 응답")
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expect(
-    page.getByText("답변을 불러오지 못했습니다. 잠시 후 새 질문을 보내 주세요."),
+    page.getByText("네트워크 연결이 끊겼습니다. 연결을 확인한 뒤 다시 시도해 주세요."),
   ).toBeVisible()
   await page.getByRole("button", { name: "새 대화" }).click()
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
@@ -188,8 +229,54 @@ test("keeps the light and dark chat responsive at every required width", async (
     }
   }
 
+  await page.setViewportSize({ height: 812, width: 319 })
+  await openFixture(page)
+  await page.getByRole("button", { name: "모델 GPT-5.6 Sol, 추론 강도 보통" }).click()
+  await assertChatGeometry(page)
+  await page.keyboard.press("Escape")
+  const narrowCopyLines = await page.evaluate(
+    ({ emptyPrompt, medicalDisclaimer }) => {
+      const lineCount = (text: string) => {
+        const element = [...document.querySelectorAll<HTMLElement>("*")].find(
+          (candidate) => candidate.textContent === text,
+        )
+        if (element === undefined) throw new TypeError(`missing copy: ${text}`)
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size
+      }
+      return {
+        emptyPrompt: lineCount(emptyPrompt),
+        medicalDisclaimer: lineCount(medicalDisclaimer),
+      }
+    },
+    { emptyPrompt, medicalDisclaimer },
+  )
+  expect(narrowCopyLines.emptyPrompt).toBeGreaterThan(1)
+  expect(narrowCopyLines.medicalDisclaimer).toBeGreaterThan(1)
+
+  await page.setViewportSize({ height: 812, width: 375 })
+  await openFixture(page)
+  await page.getByRole("button", { name: "모델 GPT-5.6 Sol, 추론 강도 보통" }).click()
+  await assertChatGeometry(page)
+  await page.keyboard.press("Escape")
+  const oneLineCopy = await page.getByText(emptyPrompt, { exact: true }).evaluate((element) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size
+  })
+  expect(oneLineCopy).toBe(1)
+
   await page.setViewportSize({ height: 406, width: 188 })
   await openFixture(page)
+  const zoomEmptyCopyLines = await page
+    .getByText(emptyPrompt, { exact: true })
+    .evaluate((element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size
+    })
+  expect(zoomEmptyCopyLines).toBeGreaterThan(1)
   await sendAndFinish(
     page,
     "200퍼센트 확대에서도 아기가 수유 뒤에 토하는 긴 한국어 상담 내용을 확인합니다",
@@ -198,7 +285,7 @@ test("keeps the light and dark chat responsive at every required width", async (
   await expect(page.locator("[data-chat-state]")).toHaveAttribute("data-chat-state", "active")
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "bottom")
   await assertChatGeometry(page)
-  await assertActiveCjkGeometry(page)
+  await assertActiveCjkGeometry(page, { allowWrappedDisclaimer: true })
   const zoomCaptureName = "chat-375-light-zoom-200-active.png"
   const zoomCapturePath = resolve(stagingRoot, zoomCaptureName)
   await page.screenshot({ fullPage: true, path: zoomCapturePath })

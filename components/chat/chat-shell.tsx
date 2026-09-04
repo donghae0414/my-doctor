@@ -4,7 +4,7 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { PlusIcon } from "lucide-react"
 import { m, useReducedMotion } from "motion/react"
-import { type ChangeEvent, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
   Conversation,
   ConversationContent,
@@ -22,7 +22,7 @@ import { fitImageRequestToBudget, omitPriorTurnImageBytes } from "@/lib/images/r
 import { ChatComposer, type ChatComposerDraft } from "./chat-composer"
 import { ChatMessage } from "./chat-message"
 import { hasRenderableMessageContent } from "./chat-message-content"
-import { type ChatShellProps, type Effort, MODEL_OPTIONS, type Model } from "./chat-types"
+import type { ChatShellProps, Effort, Model } from "./chat-types"
 import { prepareSendMessagesRequest } from "./image-transport"
 
 const defaultTransport = new DefaultChatTransport({
@@ -39,12 +39,14 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
   const [model, setModel] = useState<Model>("gpt-5.6-sol")
   const [isStopped, setIsStopped] = useState(false)
   const [composerResetKey, setComposerResetKey] = useState(0)
+  const [hasAttachmentPreviews, setHasAttachmentPreviews] = useState(false)
   const reduceMotion = useReducedMotion()
   const scrollBodyRef = useRef<HTMLDivElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const { error, messages, sendMessage, setMessages, status, stop } = useChat({ transport })
   const hasMessages = messages.length > 0
+  const showEmptyState = !hasMessages && !hasAttachmentPreviews
   const lastMessage = messages.at(-1)
   const hasEmptyAssistantResponse =
     status === "ready" &&
@@ -129,15 +131,11 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
     void stop()
   }
 
-  const handleModelChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const selected = MODEL_OPTIONS.find((option) => option.value === event.currentTarget.value)
-    if (selected !== undefined) setModel(selected.value)
-  }
-
   const handleNewChat = () => {
     void stop()
     setIsStopped(false)
     setMessages([])
+    setHasAttachmentPreviews(false)
     setComposerResetKey((current) => current + 1)
   }
 
@@ -158,19 +156,6 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       <header className="relative z-10 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-3">
         <div className="min-w-0">
           <h1 className="m-0 text-sm font-medium text-foreground">비공개 의료 상담</h1>
-          <select
-            aria-label="모델"
-            className="mt-1 min-h-11 min-w-0 max-w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-            data-model-id={model}
-            onChange={handleModelChange}
-            value={model}
-          >
-            {MODEL_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
         </div>
         <Button aria-label="새 대화" onClick={handleNewChat} variant="ghost">
           <PlusIcon aria-hidden="true" />새 대화
@@ -195,32 +180,14 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
                 }
               />
             ))
-          ) : (
+          ) : showEmptyState ? (
             <ConversationEmptyState
               className="mb-auto pt-4"
-              description={
-                <>
-                  <span className="block" data-semantic-phrase>
-                    산후 회복이나 아기 돌봄에 관해{" "}
-                  </span>
-                  <span className="block" data-semantic-phrase>
-                    궁금한 점을 적어 주세요.
-                  </span>
-                </>
-              }
-              title={
-                <>
-                  <span className="block" data-semantic-phrase>
-                    무엇을 함께{" "}
-                  </span>
-                  <span className="block" data-semantic-phrase>
-                    살펴볼까요?
-                  </span>
-                </>
-              }
+              description={null}
+              title="산후 회복·아기 돌봄, 무엇이 궁금하세요?"
             />
-          )}
-          {status === "submitted" ? (
+          ) : null}
+          {status === "submitted" && !isStopped ? (
             <Message from="assistant" streaming>
               <MessageStatus>근거를 확인하고 있어요.</MessageStatus>
             </Message>
@@ -262,11 +229,14 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
           <ChatComposer
             effort={effort}
             key={composerResetKey}
+            model={model}
             {...(imageNormalizer === undefined ? {} : { normalize: imageNormalizer })}
             onEffortChange={setEffort}
+            onHasAttachmentPreviews={setHasAttachmentPreviews}
+            onModelChange={setModel}
             onStop={handleStop}
             onSubmit={handleSubmit}
-            status={isStopped ? "ready" : status}
+            status={status}
           />
         </div>
       </m.footer>

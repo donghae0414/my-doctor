@@ -13,6 +13,17 @@ async function tap(page: Page, name: string): Promise<void> {
   await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
 }
 
+async function selectHighEffort(page: Page): Promise<void> {
+  const trigger = page.locator("button[aria-haspopup='menu']")
+  await expect(trigger).toHaveText("GPT-5.6 Sol · 보통")
+  await trigger.click()
+  const submenu = page.getByRole("menuitem", { name: "추론 강도", exact: true })
+  await submenu.focus()
+  await submenu.press("ArrowRight")
+  await page.getByRole("menuitemradio", { name: "높음", exact: true }).click()
+  await expect(trigger).toHaveAccessibleName("모델 GPT-5.6 Sol, 추론 강도 높음")
+}
+
 test("completes one mobile pointer and touch lock-to-image-source-new-chat journey", async ({
   browser,
 }) => {
@@ -47,7 +58,7 @@ test("completes one mobile pointer and touch lock-to-image-source-new-chat journ
   })
   await page.getByRole("button", { name: "task13-valid.jpg 제거" }).click()
   await expectObserved(page, observed)
-  await page.getByRole("combobox", { name: "추론 강도" }).selectOption("high")
+  await selectHighEffort(page)
   await page.getByRole("textbox", { name: "의료 질문" }).fill("TASK13_STREAM_high")
   const chatResponse = page.waitForResponse(
     (response) => response.url().endsWith("/api/chat") && response.status() === 200,

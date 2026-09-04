@@ -53,8 +53,14 @@ test("captures the complete responsive theme and motion matrix", async ({ browse
           "center",
         )
         await expect(page.getByRole("log", { name: "상담 대화" })).toContainText(
-          "무엇을 함께 살펴볼까요?",
+          "산후 회복·아기 돌봄, 무엇이 궁금하세요?",
         )
+        await expect(
+          page.getByText("AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.", { exact: true }),
+        ).toBeVisible()
+        await expect(
+          page.getByRole("button", { name: "모델 GPT-5.6 Sol, 추론 강도 보통" }),
+        ).toHaveText("GPT-5.6 Sol · 보통")
         await assertSurface(page)
         await capture(page, `${width}-${theme}-${motion}-empty.png`)
         await send(page, "TASK13_STREAM_medium")
@@ -104,6 +110,11 @@ test("captures long source image stream error offline and zoom stress states", a
     const sourceTrigger = page.getByRole("button", { name: "출처 1개 보기" })
     await sourceTrigger.click()
     await expect(page.getByRole("link", { name: /LONG-SOURCE-TITLE/u })).toBeVisible()
+    await expect(
+      page.getByRole("link", {
+        name: `신생아 수유와 체중 증가를 함께 살펴보는 보호자 안내 ${"LONG-SOURCE-TITLE-".repeat(12)}`,
+      }),
+    ).toBeVisible()
     await sourceTrigger.evaluate((element) => element.scrollIntoView({ block: "start" }))
     await assertSurface(page)
     await capture(page, `375-${theme}-long-image-source.png`)

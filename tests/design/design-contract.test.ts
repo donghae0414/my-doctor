@@ -20,6 +20,8 @@ const SECTION_NAMES = [
 const COLOR_PATTERN = /(?:oklch|hsl|rgb)a?\([^\n;)]+\)|#[0-9a-f]{3,8}\b/giu
 const DURATION_PATTERN = /\b\d+(?:\.\d+)?m?s\b/gu
 const ALLOWED_DURATIONS = new Set(["0ms", "25ms", "150ms", "200ms", "220ms", "450ms"])
+const ASSISTANT_MARKER_DURATION_CONTRACT =
+  "The sole loop exception is the `data-assistant-marker` opacity-only animation: 1.4s ease-in-out, floor 0.96, and no text or layout animation."
 
 function valuesOf(record: Record<string, string>): string[] {
   return Object.values(record)
@@ -41,6 +43,11 @@ function auditUndeclaredColorAndMotion(source: string): string[] {
       .filter((duration) => !ALLOWED_DURATIONS.has(duration))
       .map((duration) => `undeclared-motion:${duration}`),
   ]
+}
+
+function auditDesignColorAndMotion(design: string): string[] {
+  expect(design.split(ASSISTANT_MARKER_DURATION_CONTRACT)).toHaveLength(2)
+  return auditUndeclaredColorAndMotion(design.replace(ASSISTANT_MARKER_DURATION_CONTRACT, ""))
 }
 
 function cssBlock(markdown: string, heading: string): string {
@@ -97,6 +104,6 @@ describe("DESIGN.md machine contract", () => {
     }
 
     expect(() => readFileSync(fixturePath, "utf8")).toThrow()
-    expect(auditUndeclaredColorAndMotion(readFileSync(DESIGN_PATH, "utf8"))).toEqual([])
+    expect(auditDesignColorAndMotion(readFileSync(DESIGN_PATH, "utf8"))).toEqual([])
   })
 })

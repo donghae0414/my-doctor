@@ -85,9 +85,38 @@ async function exerciseChat(page: import("@playwright/test").Page, mode: MotionM
   await expect(composer).toHaveAttribute("data-placement", "bottom")
   const streaming = page.locator("article[data-streaming='true']")
   await expect(streaming).toContainText("응답을 준비하고 있습니다.")
+  const streamingAnimations = await streaming.evaluate((element) =>
+    element.getAnimations({ subtree: true }).map((animation) => {
+      const effect = animation.effect
+      return {
+        iterations: effect instanceof KeyframeEffect ? effect.getTiming().iterations : undefined,
+        properties: [
+          ...new Set(
+            effect instanceof KeyframeEffect
+              ? effect.getKeyframes().flatMap((keyframe) => Object.keys(keyframe))
+              : [],
+          ),
+        ],
+        target:
+          effect instanceof KeyframeEffect && effect.target instanceof Element
+            ? effect.target.hasAttribute("data-assistant-marker")
+              ? "assistant-marker"
+              : effect.target.tagName.toLowerCase()
+            : "unknown",
+      }
+    }),
+  )
+  const markerAnimations = streamingAnimations.filter(
+    (animation) => animation.target === "assistant-marker",
+  )
+  expect(markerAnimations).toHaveLength(mode === "normal" ? 1 : 0)
+  if (mode === "normal") {
+    expect(markerAnimations[0]?.properties).toContain("opacity")
+    expect(markerAnimations[0]?.iterations).toBe(Number.POSITIVE_INFINITY)
+  }
   expect(
-    await streaming.evaluate((element) => element.getAnimations({ subtree: true }).length),
-  ).toBe(0)
+    streamingAnimations.filter((animation) => animation.target !== "assistant-marker"),
+  ).toEqual([])
   await page.getByRole("button", { name: "응답 중지" }).click()
   await expect(page.getByRole("button", { name: "응답 중지" })).toHaveCount(0)
 

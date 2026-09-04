@@ -11,6 +11,7 @@ const jpegPath = resolve("tests/fixtures/images/oriented-6.jpg")
 const heicPath = resolve("tests/fixtures/images/still.heic")
 const corruptHeicPath = resolve("tests/fixtures/images/corrupt.heic")
 const unsupportedPath = resolve("tests/fixtures/images/unsupported.txt")
+const emptyPrompt = "산후 회복·아기 돌봄, 무엇이 궁금하세요?"
 
 test.describe.configure({ mode: "serial" })
 
@@ -106,11 +107,15 @@ test("rejects unsupported, corrupt, oversized, fifth, and conversion-failure inp
 }) => {
   await openComposer(page)
   const gallery = page.getByLabel("사진 보관함에서 선택")
+  const emptyState = page.getByText(emptyPrompt, { exact: true })
+  await expect(emptyState).toBeVisible()
 
   await gallery.setInputFiles(unsupportedPath)
   await expect(page.getByText("지원하지 않는 이미지 형식입니다.", { exact: true })).toBeVisible()
+  await expect(emptyState).toBeVisible()
   await gallery.setInputFiles(corruptHeicPath)
   await expect(page.getByText(/이미지를 읽을 수 없습니다/u)).toBeVisible()
+  await expect(emptyState).toBeVisible()
 
   const jpegBytes = await readFile(jpegPath)
   await gallery.setInputFiles({
@@ -124,11 +129,13 @@ test("rejects unsupported, corrupt, oversized, fifth, and conversion-failure inp
 
   await gallery.setInputFiles([jpegPath, jpegPath, jpegPath, jpegPath])
   await expectReadyCount(page, 4)
+  await expect(emptyState).toHaveCount(0)
   await page.getByLabel("후면 카메라로 촬영").setInputFiles(jpegPath)
   await expect(
     page.getByText("이미지는 한 번에 최대 4장까지 첨부할 수 있습니다.", { exact: true }),
   ).toBeVisible()
   await page.getByRole("button", { name: "새 대화" }).click()
+  await expect(emptyState).toBeVisible()
 
   await gallery.setInputFiles({
     buffer: await readFile(heicPath),
@@ -136,9 +143,24 @@ test("rejects unsupported, corrupt, oversized, fifth, and conversion-failure inp
     name: "conversion-failure.heic",
   })
   await expect(page.getByText(/이미지를 읽을 수 없습니다/u)).toBeVisible()
+  await expect(emptyState).toBeVisible()
   await expect(page.locator("html")).not.toHaveAttribute("data-transport-calls")
 
-  await page.getByRole("button", { name: "새 대화" }).click()
+  await gallery.setInputFiles({
+    buffer: await readFile(jpegPath),
+    mimeType: "image/jpeg",
+    name: "late.jpg",
+  })
+  await expect(page.getByText("이미지 처리 중", { exact: true })).toBeVisible()
+  await expect(page.getByTestId("image-preview-grid")).toBeVisible()
+  await expect(emptyState).toHaveCount(0)
+  await page.evaluate(() => window.dispatchEvent(new Event("resolve-late-normalization")))
+  await expectReadyCount(page, 1)
+  await expect(page.getByAltText("late.jpg 미리보기")).toBeVisible()
+  await expect(emptyState).toHaveCount(0)
+  await page.getByRole("button", { name: "late.jpg 제거" }).click()
+  await expect(emptyState).toBeVisible()
+
   await gallery.setInputFiles({
     buffer: await readFile(jpegPath),
     mimeType: "image/jpeg",
@@ -146,6 +168,7 @@ test("rejects unsupported, corrupt, oversized, fifth, and conversion-failure inp
   })
   await expect(page.getByText("이미지 처리 중", { exact: true })).toBeVisible()
   await page.getByRole("button", { name: "새 대화" }).click()
+  await expect(emptyState).toBeVisible()
   await page.evaluate(() => window.dispatchEvent(new Event("resolve-late-normalization")))
   await page.getByRole("textbox", { name: "의료 질문" }).fill("초기화 뒤 새 질문")
   await page.getByRole("button", { name: "질문 보내기" }).click()
@@ -187,6 +210,7 @@ test("blocks over-budget transport and captures mobile CJK and accessibility evi
   await page.getByRole("textbox", { name: "의료 질문" }).evaluate((element) => {
     if (!(element instanceof HTMLTextAreaElement)) throw new TypeError("missing composer textarea")
     element.value = "가".repeat(1_400_000)
+    element.dispatchEvent(new Event("input", { bubbles: true }))
   })
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expect(page.getByText(/전송 가능한 크기로 줄일 수 없습니다/u)).toBeVisible({

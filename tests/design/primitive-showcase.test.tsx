@@ -13,6 +13,16 @@ import {
 import { Source, Sources, SourcesContent, SourcesTrigger } from "@/components/ai-elements/sources"
 import { renderWithMotion as render } from "@/tests/render-with-motion"
 
+const motionMocks = vi.hoisted(() => ({ reduceMotion: false }))
+
+vi.mock("motion/react", async (importOriginal) => {
+  const original = await importOriginal<typeof import("motion/react")>()
+  return {
+    ...original,
+    useReducedMotion: () => motionMocks.reduceMotion,
+  }
+})
+
 describe("AI Elements primitive contract", () => {
   it("exposes labelled conversation and naturally wrapping messages", () => {
     render(
@@ -60,10 +70,10 @@ describe("AI Elements primitive contract", () => {
     expect(error).toHaveClass("px-3")
   })
 
-  it("submits entered text and exposes disabled and loading states", async () => {
+  it("submits entered text, shows an active stop for submitted and streaming states, and mutes disabled send", async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    render(
+    const { rerender } = render(
       <PromptInput onSubmit={onSubmit}>
         <PromptInputTextarea aria-label="의료 질문" />
         <PromptInputSubmit status="ready" />
@@ -74,6 +84,57 @@ describe("AI Elements primitive contract", () => {
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
 
     expect(onSubmit).toHaveBeenCalledWith("수유 간격이 궁금해요")
+
+    for (const status of ["submitted", "streaming"] as const) {
+      rerender(
+        <PromptInput onSubmit={onSubmit}>
+          <PromptInputTextarea aria-label="의료 질문" />
+          <PromptInputSubmit status={status} />
+        </PromptInput>,
+      )
+
+      const stop = screen.getByRole("button", { name: "응답 중지" })
+      expect(stop).toHaveAttribute("type", "button")
+      expect(stop).toBeEnabled()
+      expect(stop.querySelector(".lucide-square")).not.toBeNull()
+    }
+
+    for (const status of ["disabled", "loading"] as const) {
+      rerender(
+        <PromptInput onSubmit={onSubmit}>
+          <PromptInputTextarea aria-label="의료 질문" />
+          <PromptInputSubmit status={status} />
+        </PromptInput>,
+      )
+
+      const send = screen.getByRole("button", { name: "질문 보내기" })
+      expect(send).toBeDisabled()
+      expect(send).toHaveClass(
+        "disabled:bg-muted",
+        "disabled:text-muted-foreground",
+        "disabled:opacity-100",
+      )
+    }
+  })
+
+  it("keeps the streaming assistant marker static at full opacity with reduced motion", () => {
+    motionMocks.reduceMotion = true
+    try {
+      render(
+        <Message from="assistant" streaming>
+          <MessageStatus>근거를 확인하고 있어요.</MessageStatus>
+        </Message>,
+      )
+
+      const marker = screen
+        .getByText("근거를 확인하고 있어요.")
+        .closest("article")
+        ?.querySelector("[data-assistant-marker]")
+      expect(marker).toHaveStyle({ opacity: "1" })
+      expect(marker?.closest("article")).toHaveAttribute("data-motion-state", "instant")
+    } finally {
+      motionMocks.reduceMotion = false
+    }
   })
 
   it("rejects unsafe source protocols at the rendering boundary", () => {

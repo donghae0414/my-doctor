@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ChatTransport, FileUIPart, UIMessage, UIMessageChunk } from "ai"
+import { StrictMode } from "react"
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ImageNormalizationError } from "@/lib/images/normalize-image"
@@ -27,8 +28,11 @@ function image(name: string, type = "image/jpeg", bytes = "image"): File {
 function composerProperties(normalize: (files: readonly File[]) => Promise<readonly FileUIPart[]>) {
   return {
     effort: "medium" as const,
+    model: "gpt-5.6-sol" as const,
     normalize,
     onEffortChange: vi.fn(),
+    onHasAttachmentPreviews: vi.fn(),
+    onModelChange: vi.fn(),
     onStop: vi.fn(),
     onSubmit: vi.fn(async () => undefined),
     status: "ready" as const,
@@ -92,6 +96,7 @@ describe("ChatComposer image attachments", () => {
     pending?.resolve(files.map(filePart))
     await waitFor(() => expect(screen.getAllByText("첨부 완료")).toHaveLength(4))
     expect(screen.getAllByTestId("thumbnail-motion")).toHaveLength(4)
+    expect(screen.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
     await user.click(screen.getByRole("button", { name: "산후-2.jpg 제거" }))
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "상처 상태를 봐 주세요")
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
@@ -103,7 +108,129 @@ describe("ChatComposer image attachments", () => {
       text: "상처 상태를 봐 주세요",
     })
     expect(screen.queryByText("첨부 완료")).not.toBeInTheDocument()
+    expect(properties.onHasAttachmentPreviews).toHaveBeenLastCalledWith(false)
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(4)
+  })
+
+  it("hides the empty prompt for loading and ready previews, then restores it after the last removal", async () => {
+    const user = userEvent.setup()
+    let resolvePending: ((parts: readonly FileUIPart[]) => void) | undefined
+    const normalize = vi.fn(
+      (_files: readonly File[]) =>
+        new Promise<readonly FileUIPart[]>((resolve) => {
+          resolvePending = resolve
+        }),
+    )
+    render(
+      <ChatShell
+        imageNormalizer={normalize}
+        transport={{
+          reconnectToStream: async () => null,
+          sendMessages: async () => new ReadableStream(),
+        }}
+      />,
+    )
+
+    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    const selected = image("preview.jpg")
+    await user.upload(screen.getByLabelText("사진 보관함에서 선택"), selected)
+    expect(screen.queryByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("이미지 처리 중")).toBeVisible())
+
+    resolvePending?.([filePart(selected)])
+    await screen.findByText("첨부 완료")
+    expect(screen.queryByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "preview.jpg 제거" }))
+    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+  })
+
+  it("clears preview ownership after a successful attachment send and restores the empty prompt after failure or new chat", async () => {
+    const user = userEvent.setup()
+    const transport: ChatTransport<UIMessage> = {
+      reconnectToStream: async () => null,
+      sendMessages: async () => {
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.enqueue({ type: "start", messageId: "assistant-image" })
+            controller.enqueue({ type: "finish", finishReason: "stop" })
+            controller.close()
+          },
+        })
+      },
+    }
+    const normalize = vi.fn(async (files: readonly File[]) => {
+      if (files[0]?.name === "invalid.jpg") throw new ImageNormalizationError("corrupt")
+      return files.map(filePart)
+    })
+    render(<ChatShell imageNormalizer={normalize} transport={transport} />)
+
+    await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("sent.jpg"))
+    await screen.findByText("첨부 완료")
+    expect(screen.queryByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "질문 보내기" }))
+    await waitFor(() => expect(screen.queryByTestId("image-preview-grid")).not.toBeInTheDocument())
+    await user.click(screen.getByRole("button", { name: "새 대화" }))
+    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("invalid.jpg"))
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "이미지를 읽을 수 없습니다. 다른 이미지를 선택해 주세요.",
+    )
+    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+  })
+
+  it("keeps the final empty-prompt visibility stable through Strict Mode preview cleanup", async () => {
+    const user = userEvent.setup()
+    render(
+      <StrictMode>
+        <ChatShell
+          imageNormalizer={async (files) => files.map(filePart)}
+          transport={{
+            reconnectToStream: async () => null,
+            sendMessages: async () => new ReadableStream(),
+          }}
+        />
+      </StrictMode>,
+    )
+
+    await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("strict.jpg"))
+    await screen.findByText("첨부 완료")
+    await user.click(screen.getByRole("button", { name: "strict.jpg 제거" }))
+    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+  })
+
+  it("sends selected model and effort with a normalized image turn", async () => {
+    const user = userEvent.setup()
+    const sendMessages = vi.fn(
+      async () =>
+        new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.enqueue({ type: "start", messageId: "assistant-image-options" })
+            controller.enqueue({ type: "finish", finishReason: "stop" })
+            controller.close()
+          },
+        }),
+    )
+    render(
+      <ChatShell
+        imageNormalizer={async (files) => files.map(filePart)}
+        transport={{ reconnectToStream: async () => null, sendMessages }}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "모델 GPT-5.6 Sol, 추론 강도 보통" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "GPT-5.6 Luna" }))
+    screen.getByRole("menuitem", { name: "추론 강도" }).focus()
+    await user.keyboard("{ArrowRight}")
+    await user.keyboard("{End}{ArrowUp}{ArrowUp}{Enter}")
+    await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("model-image.jpg"))
+    await screen.findByText("첨부 완료")
+    await user.click(screen.getByRole("button", { name: "질문 보내기" }))
+
+    await waitFor(() =>
+      expect(sendMessages).toHaveBeenCalledWith(
+        expect.objectContaining({ body: { effort: "high", model: "gpt-5.6-luna" } }),
+      ),
+    )
   })
 
   it.each([

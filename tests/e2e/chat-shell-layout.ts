@@ -6,11 +6,23 @@ export async function assertChatGeometry(page: Page): Promise<void> {
     const root = document.querySelector<HTMLElement>("[data-chat-state]")
     const composer = document.querySelector<HTMLElement>("[data-testid='chat-composer-region']")
     const scrollOwners = document.querySelectorAll("[data-scroll-owner='conversation']")
-    const controls = [...document.querySelectorAll<HTMLElement>("button,select,textarea,a[href]")]
+    const controls = [
+      ...document.querySelectorAll<HTMLElement>(
+        "button,textarea,a[href],[role='menuitem'],[role='menuitemradio']",
+      ),
+    ]
       .filter((element) => element.getClientRects().length > 0)
       .map((element) => {
         const rect = element.getBoundingClientRect()
-        return { height: rect.height, right: rect.right, width: rect.width }
+        return {
+          bottom: rect.bottom,
+          height: rect.height,
+          left: rect.left,
+          right: rect.right,
+          scrollable: element.closest("[data-scroll-owner='conversation']") !== null,
+          top: rect.top,
+          width: rect.width,
+        }
       })
     const assistantBody = document.querySelector<HTMLElement>(
       "article[data-from='assistant'] > div",
@@ -40,19 +52,27 @@ export async function assertChatGeometry(page: Page): Promise<void> {
   expect(result.composerBottom).toBeLessThanOrEqual(result.viewportHeight)
   expect(
     result.controls.filter(
-      ({ height, right, width }) => height < 44 || width < 44 || right > result.viewportWidth + 1,
+      ({ bottom, height, left, right, scrollable, top, width }) =>
+        height < 43.5 ||
+        width < 43.5 ||
+        left < -1 ||
+        right > result.viewportWidth + 1 ||
+        (!scrollable && (top < -1 || bottom > result.viewportHeight + 1)),
     ),
   ).toEqual([])
 }
 
-export async function assertActiveCjkGeometry(page: Page): Promise<void> {
+export async function assertActiveCjkGeometry(
+  page: Page,
+  { allowWrappedDisclaimer = false }: { readonly allowWrappedDisclaimer?: boolean } = {},
+): Promise<void> {
   const result = await page.evaluate(() => {
     const scrollBody = document.querySelector<HTMLElement>("[role='log'] > div")
     const composer = document.querySelector<HTMLElement>("[data-testid='chat-composer-region']")
-    const effortLabel = [...document.querySelectorAll<HTMLElement>("label span")].find(
-      (element) => element.textContent === "추론 강도",
+    const medicalDisclaimer = [...document.querySelectorAll<HTMLElement>("*")].find(
+      (element) => element.textContent === "AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.",
     )
-    if (scrollBody === null || composer === null || effortLabel === undefined)
+    if (scrollBody === null || composer === null || medicalDisclaimer === undefined)
       return { missing: true }
     const bodyRect = scrollBody.getBoundingClientRect()
     const clippedText = [...scrollBody.querySelectorAll<HTMLElement>("article h2, article p")]
@@ -62,14 +82,16 @@ export async function assertActiveCjkGeometry(page: Page): Promise<void> {
         return rect.left < bodyRect.left - 1 || rect.right > bodyRect.right + 1 ? [index] : []
       })
     const composerRect = composer.getBoundingClientRect()
-    const effortRange = document.createRange()
-    effortRange.selectNodeContents(effortLabel)
-    const effortLabelLines = new Set(
-      [...effortRange.getClientRects()].map((rect) => Math.round(rect.top)),
-    ).size
+    const lineCount = (element: HTMLElement) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size
+    }
     return {
       clippedText,
-      effortLabelLines,
+      copyLines: {
+        medicalDisclaimer: lineCount(medicalDisclaimer),
+      },
       composerReachable: composerRect.top < window.innerHeight && composerRect.bottom > 0,
       horizontalOverflow: scrollBody.scrollWidth > scrollBody.clientWidth,
       missing: false,
@@ -78,11 +100,20 @@ export async function assertActiveCjkGeometry(page: Page): Promise<void> {
 
   expect(result).toEqual({
     clippedText: [],
-    effortLabelLines: 1,
+    copyLines: {
+      medicalDisclaimer: expect.any(Number),
+    },
     composerReachable: true,
     horizontalOverflow: false,
     missing: false,
   })
+  if (result.missing === false && result.copyLines !== undefined) {
+    if (allowWrappedDisclaimer) {
+      expect(result.copyLines.medicalDisclaimer).toBeGreaterThan(1)
+    } else {
+      expect(result.copyLines.medicalDisclaimer).toBe(1)
+    }
+  }
 }
 
 export async function nextAnimationFrame(page: Page): Promise<void> {

@@ -60,6 +60,82 @@ const artifactNames = [
 
 test.use({ trace: "off", video: "off" })
 
+async function assertAssistantMarkerContrast(browser: import("@playwright/test").Browser) {
+  for (const theme of ["light", "dark"] as const) {
+    const context = await browser.newContext({
+      reducedMotion: "no-preference",
+      viewport: { height: 812, width: 375 },
+    })
+    try {
+      const page = await context.newPage()
+      await page.goto(`/motion-task-12?theme=${theme}`)
+      await page.getByRole("textbox", { name: "의료 질문" }).fill("대비를 확인합니다")
+      await page.getByRole("button", { name: "질문 보내기" }).click()
+      await expect(page.locator("[data-assistant-marker]")).toBeVisible()
+      const contrasts = await page.evaluate(() => {
+        type Rgb = readonly [number, number, number]
+        const parseColor = (value: string): Rgb => {
+          const canvas = document.createElement("canvas")
+          canvas.height = 1
+          canvas.width = 1
+          const context = canvas.getContext("2d", { willReadFrequently: true })
+          if (context === null) throw new TypeError("2D color conversion is unavailable")
+          context.fillStyle = value
+          context.fillRect(0, 0, 1, 1)
+          const channels = context.getImageData(0, 0, 1, 1).data
+          if (channels.length < 3) throw new TypeError(`color conversion failed: ${value}`)
+          const [red = 0, green = 0, blue = 0] = channels
+          return [red, green, blue]
+        }
+        const linearize = (channel: number) => {
+          const normalized = channel / 255
+          return normalized <= 0.04045
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4
+        }
+        const relativeLuminance = ([red, green, blue]: Rgb) =>
+          linearize(red) * 0.2126 + linearize(green) * 0.7152 + linearize(blue) * 0.0722
+        const contrast = (foreground: Rgb, background: Rgb) => {
+          const foregroundLuminance = relativeLuminance(foreground)
+          const backgroundLuminance = relativeLuminance(background)
+          return (
+            (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+            (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+          )
+        }
+        const marker = document.querySelector("[data-assistant-marker]")
+        if (!(marker instanceof HTMLElement)) throw new TypeError("assistant marker is missing")
+        const sample = (className: string) => {
+          const element = document.createElement("div")
+          element.className = className
+          const parent = marker.parentElement
+          if (parent === null) throw new TypeError("assistant marker parent is missing")
+          parent.append(element)
+          const color = parseColor(getComputedStyle(element).backgroundColor)
+          element.remove()
+          return color
+        }
+        const markerColor = parseColor(getComputedStyle(marker).backgroundColor)
+        const compose = (background: Rgb): Rgb => [
+          markerColor[0] * 0.96 + background[0] * 0.04,
+          markerColor[1] * 0.96 + background[1] * 0.04,
+          markerColor[2] * 0.96 + background[2] * 0.04,
+        ]
+        const background = sample("bg-background")
+        const muted = sample("bg-muted")
+        return {
+          background: contrast(compose(background), background),
+          muted: contrast(compose(muted), muted),
+        }
+      })
+      expect(contrasts.background, `${theme} background`).toBeGreaterThanOrEqual(3)
+      expect(contrasts.muted, `${theme} muted`).toBeGreaterThanOrEqual(3)
+    } finally {
+      await context.close()
+    }
+  }
+}
+
 async function hashSources(): Promise<string> {
   const hash = createHash("sha256")
   for (const path of sourcePaths) hash.update(path).update(await readFile(path))
@@ -74,6 +150,7 @@ test("records the exact normal and reduced Todo12 motion contract", async () => 
   await mkdir(stagingRoot, { recursive: true })
   try {
     for (const mode of modes) await runMotionMode(browser, mode, stagingRoot)
+    await assertAssistantMarkerContrast(browser)
     for (const mode of modes) {
       for (const width of CAPTURE_WIDTHS) {
         await rename(

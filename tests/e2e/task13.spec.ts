@@ -11,6 +11,14 @@ const jpegPath = resolve("tests/fixtures/images/task13-valid.jpg")
 const heicPath = resolve("tests/fixtures/images/task13-valid.heic")
 const corruptHeicPath = resolve("tests/fixtures/images/corrupt.heic")
 const unsupportedPath = resolve("tests/fixtures/images/unsupported.txt")
+const EFFORT_LABELS = {
+  high: "높음",
+  low: "낮음",
+  max: "최대",
+  medium: "보통",
+  none: "없음",
+  xhigh: "매우 높음",
+} as const
 
 async function openLocked(page: Page): Promise<void> {
   await page.goto("/")
@@ -45,6 +53,16 @@ async function send(page: Page, text: string): Promise<void> {
   await page.getByRole("textbox", { name: "의료 질문" }).fill(text)
   await page.getByRole("button", { name: "질문 보내기" }).click()
   expect((await response).status()).toBe(200)
+}
+
+async function selectEffort(page: Page, value: (typeof EFFORTS)[number]): Promise<void> {
+  const trigger = page.getByRole("button", {
+    name: /모델 GPT-5\.6 Sol, 추론 강도 /u,
+  })
+  await trigger.click()
+  await page.getByRole("menuitem", { name: "추론 강도", exact: true }).hover()
+  await page.getByRole("menuitemradio", { name: EFFORT_LABELS[value], exact: true }).click()
+  await expect(trigger).toHaveAccessibleName(`모델 GPT-5.6 Sol, 추론 강도 ${EFFORT_LABELS[value]}`)
 }
 
 async function expectReadyImages(page: Page, count: number): Promise<void> {
@@ -88,12 +106,15 @@ test("streams text and safe sources for every effort and clears transient conver
 }) => {
   const { context, page } = await openAuthenticated(browser)
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
-  const effort = page.getByRole("combobox", { name: "추론 강도" })
-  await expect(effort.getByRole("option")).toHaveCount(6)
-  await expect(effort).toHaveValue("medium")
+  const trigger = page.getByRole("button", {
+    name: "모델 GPT-5.6 Sol, 추론 강도 보통",
+    exact: true,
+  })
+  await expect(trigger).toHaveText("GPT-5.6 Sol · 보통")
+  await expect(trigger).toHaveAccessibleName("모델 GPT-5.6 Sol, 추론 강도 보통")
 
   for (const value of EFFORTS) {
-    await effort.selectOption(value)
+    await selectEffort(page, value)
     await send(page, `TASK13_STREAM_${value}`)
     await expect(page.getByText(`[effort:${value}]`, { exact: true })).toBeVisible()
   }
@@ -183,12 +204,14 @@ test("normalizes current-turn JPEG and HEIC while rejecting malformed and excess
   await page.getByRole("textbox", { name: "의료 질문" }).evaluate((element) => {
     if (!(element instanceof HTMLTextAreaElement)) throw new TypeError("textarea unavailable")
     element.value = "가".repeat(1_400_000)
+    element.dispatchEvent(new Event("input", { bubbles: true }))
   })
   observed = await subscribeToDomState(page, {
     attribute: "data-send-error-code",
     selector: "[data-send-error-code]",
     value: "request-budget",
   })
+  await expect(page.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expectObserved(page, observed)
   await context.close()
@@ -218,9 +241,9 @@ test("provides deterministic stop, provider failure, and offline outcomes", asyn
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await providerResponse
   await expectObserved(page, observed)
-  await expect(
-    page.locator("[data-chat-error-code='provider']"),
-  ).toHaveText("현재 의료 답변과 검색 근거를 제공할 수 없습니다. 잠시 후 다시 시도해 주세요.")
+  await expect(page.locator("[data-chat-error-code='provider']")).toHaveText(
+    "현재 의료 답변과 검색 근거를 제공할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  )
   await expect(page.locator("[data-tone='loading']")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "질문 보내기" })).toBeVisible()
 
@@ -260,9 +283,13 @@ test("keeps accessible outcomes at all widths and under reduced motion", async (
     await page.getByRole("textbox", { name: "접근 코드" }).press("Enter")
     expect((await response).status()).toBe(204)
     await expect(page.getByRole("textbox", { name: "의료 질문" })).toBeVisible()
-    await page.locator("main").evaluate(async (element) =>
-      Promise.all(element.getAnimations({ subtree: true }).map((animation) => animation.finished)),
-    )
+    await page
+      .locator("main")
+      .evaluate(async (element) =>
+        Promise.all(
+          element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+        ),
+      )
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([])
     const fitsViewport = await page.evaluate(
       () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,

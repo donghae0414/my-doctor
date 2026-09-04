@@ -135,13 +135,13 @@ The following declarations are the exact Tailwind v4 / OKLCH export shown by the
 
 ### Semantic rules and states
 
-- Use semantic variables, never raw color literals in product code. `background` owns the app canvas; `card` owns contained surfaces; `popover` owns floating controls; `muted` and `secondary` own low-emphasis regions; `primary` is interactive, never decorative. Exception: two non-interactive `primary` uses are permitted — the 10px streaming marker absolutely positioned in the conversation's 16px inline-start gutter beside the assistant message's first line, shown only while the pending status ("근거를 확인하고 있어요.") is displayed or that message is streaming, and the 2px inline-start rule on the Sources disclosure. Both are non-text UI and measure ≥3:1 against `background`/`muted` in light and dark. No other decorative `primary` is permitted.
+- Use semantic variables, never raw color literals in product code. `background` owns the app canvas; `card` owns contained surfaces; `popover` owns floating controls; `muted` and `secondary` own low-emphasis regions; `primary` is interactive, never decorative. Exception: two non-interactive `primary` uses are permitted — the 10px streaming marker absolutely positioned in the conversation's 16px inline-start gutter beside the assistant message's first line, shown only while the pending status ("근거를 확인하고 있어요.") is displayed or that message is streaming, and the 2px inline-start rule on the Sources disclosure. Both are non-text UI and measure ≥3:1 against `background`/`muted` in light and dark; the marker’s 0.96-opacity composite also remains ≥3:1. No other decorative `primary` is permitted.
 - Prose links use `foreground` text with a `primary` underline (`text-decoration-color`). `primary` text at body size is prohibited: it measures ≈3.5:1 on `background` in light mode, below normal-text AA.
 - Default outline control: `background` + `foreground`, `border`, and `shadow-xs`.
 - Hover: `accent` + `accent-foreground`; do not introduce an opacity-derived accent.
 - Keyboard focus: `ring` at 50% alpha, 3px halo, with `ring` border where a border exists. Focus must remain visible in both modes.
 - Active/pressed: keep hover colors. The live reference has no separate active color; press feedback is transform-only per Section 6.
-- Disabled: preserve the relevant semantic colors at 50% opacity, block activation, and retain readable state text. Loading must not masquerade as disabled if cancellation remains possible.
+- Disabled: preserve the relevant semantic colors at 50% opacity, block activation, and retain readable state text. The empty or normalizing send action is the sole exception: it is natively disabled with `muted`/`muted-foreground` at full opacity. Loading must not masquerade as disabled if cancellation remains possible.
 - Error: `destructive` + `destructive-foreground`; invalid fields use `destructive` border and a 20% ring in light / 40% ring in dark, matching the live class contract.
 - Charts and sidebar variables remain pinned even though this product has no planned chart/sidebar. They are part of the exact export, not authorization to add those components.
 - The light `primary` / `primary-foreground` pair measures 3.90:1. Standard-size text must not use that filled pair; use outline/secondary controls or an icon with an accessible name. This preserves the palette without knowingly shipping sub-AA normal text.
@@ -222,21 +222,21 @@ Only the following task-required primitives are authorized. Their implementation
 ### Conversation
 - **Structure:** viewport/list body plus optional pinned-to-bottom affordance; this primitive is the shell’s sole scroll owner.
 - **Variants:** empty, populated, streaming, user-scrolled-away.
-- **States:** only auto-follow while already pinned; preserve user position otherwise; empty/error remain reachable. While the centered composer contains attachment previews, those previews replace the decorative empty-state prompt so the two layers never overlap.
+- **States:** only auto-follow while already pinned; preserve user position otherwise; empty/error remain reachable. Loading or ready attachment previews in the centered composer replace the decorative empty-state prompt so the two layers never overlap.
 - **Accessibility:** ordered message semantics and labelled scroll region.
 
 ### Message
 - **Structure:** user text/images align right inside a `secondary` bubble; assistant Markdown renders without a bubble at full content width, flush with the composer's inline-start edge; the streaming variant floats the `primary` marker in the gutter outside that edge and the completed variant removes it without shifting text; the pending status is plain `muted-foreground` text in the same slot, and only the error status keeps a bordered box; sources align under the assistant text; no reasoning region and no dedicated emergency card.
 - **Variants:** user, assistant, streaming, error.
-- **States:** streaming text updates are unanimated; a newly committed message uses one fade-slide; links use exact interaction states.
+- **States:** streaming text updates are unanimated; a newly committed message uses one fade-slide; links use exact interaction states. The 10px `data-assistant-marker` is present only while its caller supplies `streaming`; completion, error, and cancellation remove it without a component-owned lifecycle.
 - **Accessibility:** natural Korean line breaking, safe Markdown landmarks, useful image alternatives, source relationships announced.
 
 ### Prompt Input
-- **Structure:** multiline text input, separate camera and gallery controls, attachment strip, effort selector, send/stop action, disclaimer. Send/stop is the filled `primary` icon-only control; it is the one filled-primary surface in the product.
-- **Variants:** centered empty-state and fixed-footer active-state; idle, composing, normalizing, streaming, error.
-- **States:** every control uses the shared state contract; the send/stop meaning change is announced.
+- **Structure:** multiline text input, separate camera and gallery controls, attachment strip, one shadcn `DropdownMenu` pill combining model and effort selection in the footer. The pill shows the selected model's full name, such as `GPT-5.6 Sol · 보통`. Send/stop is the filled `primary` icon-only control; it is the one filled-primary surface in the product.
+- **Variants:** centered empty-state and fixed-footer active-state; idle, composing, normalizing, submitted, streaming, error.
+- **States:** every control uses the shared state contract; submitted and streaming expose the enabled Square stop action with the accessible name `응답 중지`, while enabled send remains submit.
 - **Accessibility:** labelled textarea, keyboard submit policy, 44px targets, persistent Korean disclaimer, error/status live region.
-- **Layout:** cluster + stack composition; wraps before overflow.
+- **Layout:** cluster + stack composition; wraps before overflow. The empty copy is exactly “산후 회복·아기 돌봄, 무엇이 궁금하세요?” with no secondary description. The persistent medical copy is exactly “AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.” At 375px these copies target their approved one-line composition; at 319px and 200% zoom they wrap naturally without clipping, shrinking, or content loss.
 
 ### Sources
 - **Structure:** disclosure trigger and list of sanitized `http`/`https` source links.
@@ -252,7 +252,7 @@ Only the following task-required primitives are authorized. Their implementation
 
 ## 6. Motion & Interaction
 
-Motion communicates input, state, and spatial continuity only. It may animate `transform`, `opacity`, and `filter`; color/background/border/box-shadow transitions are allowed as paint-state feedback. Never animate layout properties, never add parallax/magnetic/ripple/loops, and never animate streaming text updates.
+Motion communicates input, state, and spatial continuity only. It may animate `transform`, `opacity`, and `filter`; color/background/border/box-shadow transitions are allowed as paint-state feedback. Never animate layout properties, never add parallax/magnetic/ripple/loops, and never animate streaming text updates. The sole loop exception is the `data-assistant-marker` opacity-only animation: 1.4s ease-in-out, floor 0.96, and no text or layout animation.
 
 ### Named motion tokens
 
@@ -273,7 +273,7 @@ Message, source, and thumbnail entry uses opacity 0 plus translateY(12px) to res
 Under `prefers-reduced-motion: reduce` and Motion’s `useReducedMotion`:
 
 - `spring-press`, `spring-layout`, digit translation/blur, shake, and stagger become 0ms with no transform/filter displacement.
-- Screen, message, source, and attachment state changes may use opacity-only `motion-color` where continuity helps; streaming updates remain instant.
+- Screen, message, source, and attachment state changes may use opacity-only `motion-color` where continuity helps; streaming updates remain instant. `data-assistant-marker` is static at opacity 1 under reduced motion.
 - Error, pending, success, and focus retain identical text, semantics, color tokens, and reachable controls. Removing motion may never remove feedback.
 
 ## 7. Depth & Surface
