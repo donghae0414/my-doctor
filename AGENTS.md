@@ -31,6 +31,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Default to Server Components. Add `"use client"` only at the smallest boundary that needs browser state or events.
 - Keep OpenAI calls and secrets in server code. Never expose `OPENAI_API_KEY`, `AUTH_SECRET`, or `DOORLOCK_PASSWORD` to the client.
 - Reuse the existing Vercel AI SDK `useChat` and `streamText` flow instead of creating a parallel chat protocol.
+- Keep `reasoningMode: "standard"` for chat. `reasoningMode: "pro"` was tested and delivers the whole answer as a single `text-delta` after the reasoning finishes, so the UI shows nothing until the end and streaming has no effect. Only `standard` streams incrementally.
 - Preserve authentication, request validation, image-size limits, safe source filtering, and provider-error masking at API boundaries.
 - Reuse `components/ui` and the existing shadcn/ui patterns before adding a primitive.
 - Treat the tweakcn theme referenced by `DESIGN.md` as the token source. Do not introduce a parallel palette or arbitrary visual tokens.

@@ -143,7 +143,7 @@ export async function POST(request: Request): Promise<Response> {
       maxOutputTokens: 4096,
       providerOptions: {
         openai: {
-          // reasoningMode: "pro", // temporarily lowered to standard; restore by swapping the two lines
+          // "pro" returns the whole answer as one text-delta after reasoning, so the UI cannot stream. See AGENTS.md.
           reasoningMode: "standard",
           reasoningEffort: parsed.data.effort,
           store: false,

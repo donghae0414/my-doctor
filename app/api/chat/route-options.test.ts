@@ -102,7 +102,7 @@ describe("POST /api/chat provider contract", () => {
     expect(openai).toHaveBeenCalledWith(modelId)
   })
 
-  it("uses gpt-5.6-sol, medium, and every fixed Responses/search option when omitted", async () => {
+  it("uses gpt-5.6-sol, medium, streaming-safe standard reasoning, and every fixed Responses/search option when omitted", async () => {
     // Given: an authenticated request with no explicit effort.
     const model = successfulModel()
     mocks.openai.mockReturnValue(model)
