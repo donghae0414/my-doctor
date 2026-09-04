@@ -24,6 +24,7 @@ import { MEDICAL_SYSTEM_PROMPT } from "@/lib/ai/medical-system-prompt"
 import { POST } from "./route"
 
 const EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"] as const
+const MODELS = ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] as const
 const USAGE = {
   inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
   outputTokens: { total: 1, text: 1, reasoning: 0 },
@@ -47,12 +48,13 @@ function successfulModel(): MockLanguageModelV4 {
   })
 }
 
-function chatRequest(effort?: string): Request {
+function chatRequest(effort?: string, model?: string): Request {
   return new Request("http://localhost/api/chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       ...(effort === undefined ? {} : { effort }),
+      ...(model === undefined ? {} : { model }),
       messages: [{ id: "user-1", role: "user", parts: [{ type: "text", text: "질문" }] }],
     }),
   })
@@ -78,7 +80,7 @@ describe("POST /api/chat provider contract", () => {
     // Then: the provider receives that exact effort without remapping.
     expect(model.doStreamCalls[0]?.providerOptions).toEqual({
       openai: {
-        reasoningMode: "pro",
+        reasoningMode: "standard",
         reasoningEffort: effort,
         store: false,
         reasoningSummary: null,
@@ -86,7 +88,21 @@ describe("POST /api/chat provider contract", () => {
     })
   })
 
-  it("uses medium and every fixed Responses/search option when effort is omitted", async () => {
+  it.each(MODELS)("passes the selected %s model unchanged", async (modelId) => {
+    // Given: an authenticated request naming one of the selectable models.
+    const model = successfulModel()
+    mocks.openai.mockReturnValue(model)
+
+    // When: the selected model is submitted and the stream is consumed.
+    const response = await POST(chatRequest(undefined, modelId))
+    await response.text()
+
+    // Then: the provider is created with that exact model id.
+    expect(openai).toHaveBeenCalledOnce()
+    expect(openai).toHaveBeenCalledWith(modelId)
+  })
+
+  it("uses gpt-5.6-sol, medium, and every fixed Responses/search option when omitted", async () => {
     // Given: an authenticated request with no explicit effort.
     const model = successfulModel()
     mocks.openai.mockReturnValue(model)
@@ -105,7 +121,7 @@ describe("POST /api/chat provider contract", () => {
     expect(call?.toolChoice).toEqual({ type: "required" })
     expect(call?.providerOptions).toEqual({
       openai: {
-        reasoningMode: "pro",
+        reasoningMode: "standard",
         reasoningEffort: "medium",
         store: false,
         reasoningSummary: null,
@@ -113,6 +129,18 @@ describe("POST /api/chat provider contract", () => {
     })
     expect(call?.prompt[0]).toEqual({ role: "system", content: MEDICAL_SYSTEM_PROMPT })
     expect(call?.tools).toHaveLength(1)
+  })
+
+  it("rejects an unknown model before selecting a provider", async () => {
+    // Given: an authenticated request with a model outside the allowed list.
+
+    // When: the route parses the request.
+    const response = await POST(chatRequest(undefined, "gpt-5.6"))
+
+    // Then: a bounded Korean validation response is returned before OpenAI.
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: "요청 형식이 올바르지 않습니다." })
+    expect(mocks.openai).not.toHaveBeenCalled()
   })
 
   it("rejects an unknown effort before selecting a model", async () => {

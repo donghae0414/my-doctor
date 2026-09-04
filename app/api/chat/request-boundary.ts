@@ -8,6 +8,7 @@ import {
 import { z } from "zod"
 
 const EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"] as const
+const MODELS = ["gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra"] as const
 
 export function isSafeSourceUrl(url: string): boolean {
   if (!URL.canParse(url)) return false
@@ -91,6 +92,7 @@ const chatRequestEnvelopeSchema = z.strictObject({
   id: z.string().min(1).optional(),
   messageId: z.string().min(1).optional(),
   messages: z.unknown(),
+  model: z.enum(MODELS).default("gpt-5.6-sol"),
   trigger: z.literal("submit-message").optional(),
 })
 
@@ -100,6 +102,7 @@ const chatRequestPolicySchema = z
     id: z.string().min(1).optional(),
     messageId: z.string().min(1).optional(),
     messages: z.array(messageSchema).min(1),
+    model: z.enum(MODELS).default("gpt-5.6-sol"),
     trigger: z.literal("submit-message").optional(),
   })
   .superRefine(({ messages }, context) => {

@@ -4,7 +4,7 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { PlusIcon } from "lucide-react"
 import { m, useReducedMotion } from "motion/react"
-import { useEffect, useRef, useState } from "react"
+import { type ChangeEvent, useEffect, useRef, useState } from "react"
 import {
   Conversation,
   ConversationContent,
@@ -22,7 +22,7 @@ import { fitImageRequestToBudget, omitPriorTurnImageBytes } from "@/lib/images/r
 import { ChatComposer, type ChatComposerDraft } from "./chat-composer"
 import { ChatMessage } from "./chat-message"
 import { hasRenderableMessageContent } from "./chat-message-content"
-import type { ChatShellProps, Effort } from "./chat-types"
+import { type ChatShellProps, type Effort, MODEL_OPTIONS, type Model } from "./chat-types"
 import { prepareSendMessagesRequest } from "./image-transport"
 
 const defaultTransport = new DefaultChatTransport({
@@ -36,6 +36,7 @@ const PROVIDER_FAILURE_MESSAGE =
 
 export function ChatShell({ imageNormalizer, transport = defaultTransport }: ChatShellProps) {
   const [effort, setEffort] = useState<Effort>("medium")
+  const [model, setModel] = useState<Model>("gpt-5.6-sol")
   const [isStopped, setIsStopped] = useState(false)
   const [composerResetKey, setComposerResetKey] = useState(0)
   const reduceMotion = useReducedMotion()
@@ -87,7 +88,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
     pinnedRef.current = true
     setIsStopped(false)
     if (draft.originals.length === 0) {
-      void sendMessage({ text: draft.text }, { body: { effort } })
+      void sendMessage({ text: draft.text }, { body: { effort, model } })
       return
     }
 
@@ -111,6 +112,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
             ],
           },
         ]),
+        model,
         trigger: "submit-message",
       }),
     })
@@ -118,13 +120,18 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       draft.text.length > 0
         ? { files: [...fitted.images], text: draft.text }
         : { files: [...fitted.images] },
-      { body: { effort } },
+      { body: { effort, model } },
     )
   }
 
   const handleStop = () => {
     setIsStopped(true)
     void stop()
+  }
+
+  const handleModelChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const selected = MODEL_OPTIONS.find((option) => option.value === event.currentTarget.value)
+    if (selected !== undefined) setModel(selected.value)
   }
 
   const handleNewChat = () => {
@@ -151,9 +158,19 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       <header className="relative z-10 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-3">
         <div className="min-w-0">
           <h1 className="m-0 text-sm font-medium text-foreground">비공개 의료 상담</h1>
-          <p className="m-0 text-sm text-foreground" data-model-id="gpt-5.6-sol">
-            GPT-5.6 Sol
-          </p>
+          <select
+            aria-label="모델"
+            className="mt-1 min-h-11 min-w-0 max-w-full rounded-md border border-border bg-background px-3 text-sm text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            data-model-id={model}
+            onChange={handleModelChange}
+            value={model}
+          >
+            {MODEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
         <Button aria-label="새 대화" onClick={handleNewChat} variant="ghost">
           <PlusIcon aria-hidden="true" />새 대화

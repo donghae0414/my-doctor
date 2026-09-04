@@ -47,7 +47,8 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   await openFixture(page)
 
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
-  await expect(page.getByText("GPT-5.6 Sol")).toHaveAttribute("data-model-id", "gpt-5.6-sol")
+  await expect(page.getByRole("combobox", { name: "모델" })).toHaveValue("gpt-5.6-sol")
+  await expect(page.getByRole("combobox", { name: "모델" }).getByRole("option")).toHaveCount(3)
   await expect(page.getByRole("combobox", { name: "추론 강도" })).toHaveValue("medium")
   await expect(page.getByRole("combobox", { name: "추론 강도" }).getByRole("option")).toHaveCount(6)
   await expect(page.getByText(/의료진의 진단을 대신하지 않으며/u)).toBeVisible()

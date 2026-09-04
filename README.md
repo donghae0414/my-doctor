@@ -26,6 +26,18 @@ pnpm dev
 
 브라우저에서 [http://localhost:3000](http://localhost:3000)을 엽니다.
 
+### Vercel CLI로 실행
+
+Vercel 프로젝트의 환경 변수와 런타임을 그대로 쓰려면 Vercel CLI로 실행합니다. 프로젝트 연결과 `vercel env pull`은 Vercel 계정 로그인이 필요합니다.
+
+```bash
+vercel link
+vercel env pull .env.local
+pnpm dev:vercel
+```
+
+`vercel env pull`은 Vercel 프로젝트의 Development 환경 변수와 함께 `VERCEL_OIDC_TOKEN`을 `.env.local`에 기록하며, 기존 `.env.local`을 덮어씁니다. 따라서 Vercel 프로젝트에 `OPENAI_API_KEY`, `DOORLOCK_PASSWORD`, `AUTH_SECRET`이 먼저 등록되어 있어야 합니다. `VERCEL_OIDC_TOKEN`은 약 12시간 뒤 만료되므로 만료되면 `vercel env pull`을 다시 실행합니다. 앱은 이 토큰을 직접 읽지 않으며 OpenAI 호출에는 계속 `OPENAI_API_KEY`를 사용합니다.
+
 ## 환경 변수
 
 | 이름 | 설명 |
@@ -51,6 +63,7 @@ UI 컴포넌트 설정은 [`components.json`](./components.json), tweakcn 테마
 | 명령 | 용도 |
 | --- | --- |
 | `pnpm dev` | 개발 서버 실행 |
+| `pnpm dev:vercel` | Vercel CLI(`vercel dev`)로 개발 서버 실행 |
 | `pnpm lint` | Biome 린트 검사 |
 | `pnpm typecheck` | TypeScript 타입 검사 |
 | `pnpm test` | Vitest 실행 |

@@ -127,7 +127,7 @@ export async function POST(request: Request): Promise<Response> {
             process.env,
             currentText,
           )
-        : openai("gpt-5.6-sol")
+        : openai(parsed.data.model)
     const tools = {
       web_search: openai.tools.webSearch({ externalWebAccess: true }),
     }
@@ -140,7 +140,8 @@ export async function POST(request: Request): Promise<Response> {
       maxOutputTokens: 4096,
       providerOptions: {
         openai: {
-          reasoningMode: "pro",
+          // reasoningMode: "pro", // temporarily lowered to standard; restore by swapping the two lines
+          reasoningMode: "standard",
           reasoningEffort: parsed.data.effort,
           store: false,
           reasoningSummary: null,

@@ -237,7 +237,7 @@ describe("ChatShell", () => {
     expect(response?.textContent).toBe("👩‍⚕️")
   })
 
-  it("centers the initial composer with the fixed model and six effort choices", async () => {
+  it("centers the initial composer with three model choices and six effort choices", async () => {
     render(<ChatShell transport={transportFor(successfulChunks)} />)
 
     expect(screen.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
@@ -245,7 +245,10 @@ describe("ChatShell", () => {
       "data-motion-surface",
       "composer",
     )
-    expect(screen.getByText("GPT-5.6 Sol")).toHaveAttribute("data-model-id", "gpt-5.6-sol")
+    const model = screen.getByRole("combobox", { name: "모델" })
+    expect(within(model).getAllByRole("option")).toHaveLength(3)
+    expect(model).toHaveValue("gpt-5.6-sol")
+    expect(model).toHaveAttribute("data-model-id", "gpt-5.6-sol")
     const effort = screen.getByRole("combobox", { name: "추론 강도" })
     expect(within(effort).getAllByRole("option")).toHaveLength(6)
     expect(effort).toHaveValue("medium")
@@ -318,7 +321,7 @@ describe("ChatShell", () => {
     ).toBeVisible()
   })
 
-  it("passes the selected effort, exposes stop while streaming, and keeps partial text", async () => {
+  it("passes the selected model and effort, exposes stop while streaming, and keeps partial text", async () => {
     const user = userEvent.setup()
     const streamedText = "첫 번째 안내".repeat(20)
     let streamController: ReadableStreamDefaultController<UIMessageChunk> | undefined
@@ -342,6 +345,11 @@ describe("ChatShell", () => {
     }
     render(<ChatShell transport={transport} />)
 
+    await user.selectOptions(screen.getByRole("combobox", { name: "모델" }), "gpt-5.6-terra")
+    expect(screen.getByRole("combobox", { name: "모델" })).toHaveAttribute(
+      "data-model-id",
+      "gpt-5.6-terra",
+    )
     await user.selectOptions(screen.getByRole("combobox", { name: "추론 강도" }), "xhigh")
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "질문")
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
@@ -361,7 +369,7 @@ describe("ChatShell", () => {
       "false",
     )
     expect(sendMessages).toHaveBeenCalledWith(
-      expect.objectContaining({ body: { effort: "xhigh" } }),
+      expect.objectContaining({ body: { effort: "xhigh", model: "gpt-5.6-terra" } }),
     )
     expect(streamController).toBeDefined()
   })
