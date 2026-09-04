@@ -77,6 +77,17 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   const streamingBodyLeft = await streamingAssistantBody.evaluate(
     (element) => element.getBoundingClientRect().left,
   )
+  // The marker floats in the gutter: fully visible, and entirely before the text edge.
+  const markerRect = await streamingAssistant
+    .locator("[data-assistant-marker]")
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+      return { left: rect.left, right: rect.right, visible: hit === element }
+    })
+  expect(markerRect.left).toBeGreaterThanOrEqual(0)
+  expect(markerRect.right).toBeLessThanOrEqual(streamingBodyLeft)
+  expect(markerRect.visible).toBe(true)
 
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()

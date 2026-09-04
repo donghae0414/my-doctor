@@ -25,7 +25,7 @@ export function Message({ children, className, from, streaming = false, ...props
         "group w-full",
         from === "user"
           ? "flex flex-col items-end gap-2"
-          : "grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2",
+          : "relative flex flex-col gap-2",
         className,
       )}
       data-from={from}
@@ -47,11 +47,11 @@ export function Message({ children, className, from, streaming = false, ...props
           {streaming ? (
             <span
               aria-hidden="true"
-              className="mt-0.5 size-5 rounded-full bg-primary"
+              className="absolute top-1.5 -start-[13px] size-2.5 rounded-full bg-primary"
               data-assistant-marker=""
             />
           ) : null}
-          <div className="col-start-2 flex min-w-0 flex-col gap-2">{children}</div>
+          <div className="flex min-w-0 flex-col gap-2">{children}</div>
         </>
       ) : (
         children
@@ -96,10 +96,10 @@ export function MessageStatus({ className, tone = "loading", ...props }: Message
   return (
     <p
       className={cn(
-        "m-0 rounded-md px-3 py-2 text-sm",
+        "m-0 text-sm",
         tone === "error"
-          ? "border border-destructive bg-card text-foreground"
-          : "bg-muted text-foreground",
+          ? "rounded-md border border-destructive bg-card px-3 py-2 text-foreground"
+          : "text-muted-foreground",
         className,
       )}
       data-tone={tone}

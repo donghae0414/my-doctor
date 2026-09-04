@@ -404,6 +404,14 @@ describe("ChatShell", () => {
     const pendingArticle = pending.closest("article")
     expect(pendingArticle).toHaveAttribute("data-from", "assistant")
     expect(pendingArticle?.querySelectorAll("[data-assistant-marker]")).toHaveLength(1)
+    // And: the marker floats in the gutter instead of reserving a leading column,
+    // so the status text sits flush with the composer and has no bubble background.
+    expect(pendingArticle?.className).not.toMatch(/grid-cols-/u)
+    expect(pendingArticle?.querySelector("[data-assistant-marker]")).toHaveClass("absolute")
+    expect(pending.parentElement).not.toHaveClass("col-start-2")
+    expect(pending).toHaveClass("text-muted-foreground")
+    expect(pending).not.toHaveClass("bg-muted")
+    expect(pending).not.toHaveClass("px-3")
   })
 
   it("shows an exact offline terminal when network transport fails", async () => {

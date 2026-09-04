@@ -179,7 +179,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
 
       <Conversation aria-label="상담 대화" className="h-full min-h-0">
         <ConversationContent
-          className={hasMessages ? "mx-auto w-full max-w-[65ch]" : "flex flex-col"}
+          className={hasMessages ? "mx-auto w-full max-w-[calc(65ch+2rem)]" : "flex flex-col"}
           ref={scrollBodyRef}
         >
           {hasMessages ? (

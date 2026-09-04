@@ -12,8 +12,14 @@ export async function assertChatGeometry(page: Page): Promise<void> {
         const rect = element.getBoundingClientRect()
         return { height: rect.height, right: rect.right, width: rect.width }
       })
+    const assistantBody = document.querySelector<HTMLElement>(
+      "article[data-from='assistant'] > div",
+    )
+    const composerColumn = composer?.querySelector<HTMLElement>(":scope > div")
     return {
+      assistantBodyLeft: assistantBody?.getBoundingClientRect().left,
       composerBottom: composer?.getBoundingClientRect().bottom,
+      composerColumnLeft: composerColumn?.getBoundingClientRect().left,
       controls,
       documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       rootHeight: root?.getBoundingClientRect().height,
@@ -25,6 +31,11 @@ export async function assertChatGeometry(page: Page): Promise<void> {
 
   expect(result.documentOverflow).toBe(false)
   expect(result.scrollOwners).toBe(1)
+  // Once a reply exists, assistant text starts on the composer's inline-start edge.
+  if (result.assistantBodyLeft !== undefined) {
+    if (result.composerColumnLeft === undefined) throw new TypeError("composer column is missing")
+    expect(Math.abs(result.assistantBodyLeft - result.composerColumnLeft)).toBeLessThanOrEqual(1)
+  }
   expect(result.rootHeight).toBe(result.viewportHeight)
   expect(result.composerBottom).toBeLessThanOrEqual(result.viewportHeight)
   expect(

@@ -135,7 +135,7 @@ The following declarations are the exact Tailwind v4 / OKLCH export shown by the
 
 ### Semantic rules and states
 
-- Use semantic variables, never raw color literals in product code. `background` owns the app canvas; `card` owns contained surfaces; `popover` owns floating controls; `muted` and `secondary` own low-emphasis regions; `primary` is interactive, never decorative. Exception: two non-interactive `primary` uses are permitted — the 20px streaming marker shown in the assistant message's leading column only while the pending status ("근거를 확인하고 있어요.") is displayed or that message is streaming, and the 2px inline-start rule on the Sources disclosure. Both are non-text UI and measure ≥3:1 against `background`/`muted` in light and dark. No other decorative `primary` is permitted.
+- Use semantic variables, never raw color literals in product code. `background` owns the app canvas; `card` owns contained surfaces; `popover` owns floating controls; `muted` and `secondary` own low-emphasis regions; `primary` is interactive, never decorative. Exception: two non-interactive `primary` uses are permitted — the 10px streaming marker absolutely positioned in the conversation's 16px inline-start gutter beside the assistant message's first line, shown only while the pending status ("근거를 확인하고 있어요.") is displayed or that message is streaming, and the 2px inline-start rule on the Sources disclosure. Both are non-text UI and measure ≥3:1 against `background`/`muted` in light and dark. No other decorative `primary` is permitted.
 - Prose links use `foreground` text with a `primary` underline (`text-decoration-color`). `primary` text at body size is prohibited: it measures ≈3.5:1 on `background` in light mode, below normal-text AA.
 - Default outline control: `background` + `foreground`, `border`, and `shadow-xs`.
 - Hover: `accent` + `accent-foreground`; do not introduce an opacity-derived accent.
@@ -226,7 +226,7 @@ Only the following task-required primitives are authorized. Their implementation
 - **Accessibility:** ordered message semantics and labelled scroll region.
 
 ### Message
-- **Structure:** user text/images align right inside a `secondary` bubble; assistant Markdown renders without a bubble at full content width behind a reserved 20px leading column; the streaming variant fills that column with the `primary` marker and the completed variant leaves it empty; sources align under the assistant text; no reasoning region and no dedicated emergency card.
+- **Structure:** user text/images align right inside a `secondary` bubble; assistant Markdown renders without a bubble at full content width, flush with the composer's inline-start edge; the streaming variant floats the `primary` marker in the gutter outside that edge and the completed variant removes it without shifting text; the pending status is plain `muted-foreground` text in the same slot, and only the error status keeps a bordered box; sources align under the assistant text; no reasoning region and no dedicated emergency card.
 - **Variants:** user, assistant, streaming, error.
 - **States:** streaming text updates are unanimated; a newly committed message uses one fade-slide; links use exact interaction states.
 - **Accessibility:** natural Korean line breaking, safe Markdown landmarks, useful image alternatives, source relationships announced.

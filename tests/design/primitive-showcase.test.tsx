@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import { Attachment, Attachments } from "@/components/ai-elements/attachments"
 import { Conversation, ConversationContent } from "@/components/ai-elements/conversation"
-import { Message, MessageContent } from "@/components/ai-elements/message"
+import { Message, MessageContent, MessageStatus } from "@/components/ai-elements/message"
 import {
   PromptInput,
   PromptInputSubmit,
@@ -34,6 +34,30 @@ describe("AI Elements primitive contract", () => {
     expect(message).not.toHaveClass("max-w-[min(85%,65ch)]")
     expect(message).not.toHaveClass("bg-card")
     expect(message.closest("article")?.querySelector("[data-assistant-marker]")).toBeNull()
+    expect(message.closest("article")?.className).not.toMatch(/grid-cols-/u)
+  })
+
+  it("renders the pending status as plain text and keeps the error status boxed", () => {
+    render(
+      <Message from="assistant" streaming>
+        <MessageStatus>근거를 확인하고 있어요.</MessageStatus>
+        <MessageStatus tone="error">답변을 불러오지 못했습니다.</MessageStatus>
+      </Message>,
+    )
+
+    const pending = screen.getByText("근거를 확인하고 있어요.")
+    expect(pending).toHaveAttribute("role", "status")
+    expect(pending).toHaveClass("text-muted-foreground")
+    expect(pending).not.toHaveClass("bg-muted")
+    expect(pending).not.toHaveClass("rounded-md")
+    expect(pending).not.toHaveClass("px-3")
+    expect(pending.closest("article")?.querySelector("[data-assistant-marker]")).toHaveClass(
+      "absolute",
+    )
+
+    const error = screen.getByText("답변을 불러오지 못했습니다.")
+    expect(error).toHaveClass("border-destructive")
+    expect(error).toHaveClass("px-3")
   })
 
   it("submits entered text and exposes disabled and loading states", async () => {
