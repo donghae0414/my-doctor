@@ -126,7 +126,7 @@ export function PromptInputSubmit({ children, status, ...props }: PromptInputSub
       disabled={disabled}
       size="icon"
       type={status === "streaming" ? "button" : "submit"}
-      variant="outline"
+      variant="default"
       {...props}
     >
       <AnimatePresence initial={false} mode="sync">

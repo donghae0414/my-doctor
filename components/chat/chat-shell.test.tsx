@@ -154,10 +154,12 @@ describe("ChatShell", () => {
     const response = screen.getByText("A").closest("article")
     expect(response).toHaveTextContent(/^A$/u)
     expect(document.querySelector("[data-streamdown-mode='streaming']")).not.toBeNull()
+    expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(1)
 
     rerender(<ChatMessage message={message} streaming={false} />)
     expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
     expect(document.querySelector("[data-streamdown-mode='static']")).not.toBeNull()
+    expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(0)
 
     act(() => vi.advanceTimersByTime(1_000))
     expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
@@ -272,6 +274,17 @@ describe("ChatShell", () => {
       "user",
     )
     expect(await screen.findByRole("heading", { name: "확인할 점" })).toBeVisible()
+    const assistantArticle = screen.getByRole("heading", { name: "확인할 점" }).closest("article")
+    expect(assistantArticle).toHaveAttribute("data-from", "assistant")
+    expect(assistantArticle?.querySelector(".bg-card")).toBeNull()
+    expect(assistantArticle?.querySelector(".shadow-xs")).toBeNull()
+    expect(
+      screen
+        .getByText("생후 3주 아기가 자주 토해요")
+        .closest("article")
+        ?.querySelector("[data-assistant-marker]"),
+    ).toBeNull()
+    expect(screen.getByRole("button", { name: /질문 보내기|응답 중지/u })).toHaveClass("bg-primary")
     await user.click(screen.getByRole("button", { name: "출처 1개 보기" }))
     expect(screen.getByRole("link", { name: "신생아 체온 근거 자료" })).toHaveAttribute(
       "href",
@@ -372,6 +385,25 @@ describe("ChatShell", () => {
       expect.objectContaining({ body: { effort: "xhigh", model: "gpt-5.6-terra" } }),
     )
     expect(streamController).toBeDefined()
+  })
+
+  it("shows the pending status with the streaming marker before the response starts", async () => {
+    // Given: a transport that never resolves, so the chat stays in the submitted state.
+    const user = userEvent.setup()
+    const transport: ChatTransport<UIMessage> = {
+      reconnectToStream: async () => null,
+      sendMessages: () => new Promise(() => undefined),
+    }
+    render(<ChatShell transport={transport} />)
+
+    await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "질문")
+    await user.click(screen.getByRole("button", { name: "질문 보내기" }))
+
+    // Then: the pending status renders inside an assistant article with the marker.
+    const pending = await screen.findByText("근거를 확인하고 있어요.")
+    const pendingArticle = pending.closest("article")
+    expect(pendingArticle).toHaveAttribute("data-from", "assistant")
+    expect(pendingArticle?.querySelectorAll("[data-assistant-marker]")).toHaveLength(1)
   })
 
   it("shows an exact offline terminal when network transport fails", async () => {

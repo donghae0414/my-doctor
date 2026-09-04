@@ -1,19 +1,20 @@
 "use client"
 
 import { m, useReducedMotion } from "motion/react"
-import type { ComponentProps } from "react"
+import type { ComponentProps, ReactNode } from "react"
 import { Streamdown } from "streamdown"
 
 import { REDUCED_OPACITY_TRANSITION, STATE_TRANSITION } from "@/components/motion/motion-tokens"
 import { cn } from "@/lib/utils"
 
 /** Registry source: https://registry.ai-sdk.dev/message.json */
-export type MessageProps = ComponentProps<typeof m.article> & {
+export type MessageProps = Omit<ComponentProps<typeof m.article>, "children"> & {
+  readonly children?: ReactNode
   readonly from: "assistant" | "user"
   readonly streaming?: boolean
 }
 
-export function Message({ className, from, streaming = false, ...props }: MessageProps) {
+export function Message({ children, className, from, streaming = false, ...props }: MessageProps) {
   const reduceMotion = useReducedMotion()
   const isInstant = streaming
 
@@ -21,8 +22,10 @@ export function Message({ className, from, streaming = false, ...props }: Messag
     <m.article
       animate={{ opacity: 1, y: 0 }}
       className={cn(
-        "group flex w-full flex-col gap-2",
-        from === "user" ? "items-end" : "items-start",
+        "group w-full",
+        from === "user"
+          ? "flex flex-col items-end gap-2"
+          : "grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 gap-y-2",
         className,
       )}
       data-from={from}
@@ -38,7 +41,22 @@ export function Message({ className, from, streaming = false, ...props }: Messag
             }
       }
       {...props}
-    />
+    >
+      {from === "assistant" ? (
+        <>
+          {streaming ? (
+            <span
+              aria-hidden="true"
+              className="mt-0.5 size-5 rounded-full bg-primary"
+              data-assistant-marker=""
+            />
+          ) : null}
+          <div className="col-start-2 flex min-w-0 flex-col gap-2">{children}</div>
+        </>
+      ) : (
+        children
+      )}
+    </m.article>
   )
 }
 
@@ -48,7 +66,7 @@ export function MessageContent({ className, ...props }: MessageContentProps) {
   return (
     <div
       className={cn(
-        "break-keep max-w-[min(85%,65ch)] [overflow-wrap:anywhere] rounded-lg px-4 py-3 max-[319px]:max-w-full max-[319px]:px-3 text-base leading-6 text-foreground group-data-[from=user]:bg-secondary group-data-[from=user]:text-secondary-foreground group-data-[from=assistant]:bg-card group-data-[from=assistant]:shadow-xs",
+        "break-keep min-w-0 [overflow-wrap:anywhere] text-base leading-6 text-foreground group-data-[from=user]:max-w-[min(85%,65ch)] group-data-[from=user]:rounded-lg group-data-[from=user]:px-4 group-data-[from=user]:py-3 group-data-[from=user]:bg-secondary group-data-[from=user]:text-secondary-foreground max-[319px]:max-w-full group-data-[from=user]:max-[319px]:px-3",
         className,
       )}
       {...props}
@@ -62,7 +80,7 @@ export function MessageResponse({ className, ...props }: MessageResponseProps) {
   return (
     <Streamdown
       className={cn(
-        "size-full [&_a]:overflow-wrap-anywhere [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_p]:my-0 [&_p+p]:mt-3",
+        "size-full [&_a]:overflow-wrap-anywhere [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_a]:decoration-primary [&_a]:decoration-2 [&_a]:underline-offset-4 [&_p]:my-0 [&_p+p]:mt-3",
         className,
       )}
       {...props}

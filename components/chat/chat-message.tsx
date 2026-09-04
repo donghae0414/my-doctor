@@ -166,7 +166,7 @@ export function ChatMessage({ message, streaming = false }: ChatMessageProps) {
       ) : null}
       {text.length > 0 ? (
         <MessageContent
-          className={from === "user" ? "!bg-muted !text-foreground" : "!text-foreground"}
+          className={from === "user" ? "!bg-muted !text-foreground" : undefined}
         >
           {from === "assistant" ? (
             <AssistantMessageResponse

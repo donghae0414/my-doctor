@@ -10,7 +10,7 @@ import {
   ConversationContent,
   ConversationEmptyState,
 } from "@/components/ai-elements/conversation"
-import { MessageStatus } from "@/components/ai-elements/message"
+import { Message, MessageStatus } from "@/components/ai-elements/message"
 import {
   REDUCED_OPACITY_TRANSITION,
   SPRING_LAYOUT,
@@ -220,7 +220,11 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
               }
             />
           )}
-          {status === "submitted" ? <MessageStatus>근거를 확인하고 있어요.</MessageStatus> : null}
+          {status === "submitted" ? (
+            <Message from="assistant" streaming>
+              <MessageStatus>근거를 확인하고 있어요.</MessageStatus>
+            </Message>
+          ) : null}
           {terminalError !== undefined ? (
             <MessageStatus data-chat-error-code={terminalError.code} tone="error">
               {terminalError.code === "offline" ? (

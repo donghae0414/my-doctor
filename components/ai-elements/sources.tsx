@@ -31,7 +31,10 @@ export function Sources({
   return (
     <SourcesOpenContext value={currentOpen}>
       <Collapsible
-        className={cn("group/sources w-full max-w-[65ch] rounded-lg bg-muted", className)}
+        className={cn(
+          "group/sources w-full max-w-[65ch] rounded-lg border-s-2 border-s-primary bg-muted",
+          className,
+        )}
         onOpenChange={(nextOpen) => {
           if (open === undefined) setInternalOpen(nextOpen)
           onOpenChange?.(nextOpen)

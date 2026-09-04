@@ -31,6 +31,9 @@ describe("AI Elements primitive contract", () => {
     const message = screen.getByText(/아기가 잘 먹고 있지만/u)
     expect(conversation.querySelector("[data-scroll-owner='conversation']")).not.toBeNull()
     expect(message).toHaveClass("break-keep")
+    expect(message).not.toHaveClass("max-w-[min(85%,65ch)]")
+    expect(message).not.toHaveClass("bg-card")
+    expect(message.closest("article")?.querySelector("[data-assistant-marker]")).toBeNull()
   })
 
   it("submits entered text and exposes disabled and loading states", async () => {

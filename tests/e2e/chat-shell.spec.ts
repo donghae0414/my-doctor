@@ -71,9 +71,20 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   await expect(page.locator("article[data-from='user']")).toContainText("생후 3주")
   await expect(page.getByRole("button", { name: "응답 중지" })).toBeVisible()
   await expect(page.locator("html")).toHaveAttribute("data-last-effort", "xhigh")
+  const streamingAssistant = page.locator("article[data-from='assistant']").last()
+  const streamingAssistantBody = streamingAssistant.locator(":scope > div")
+  await expect(streamingAssistant.locator("[data-assistant-marker]")).toBeVisible()
+  const streamingBodyLeft = await streamingAssistantBody.evaluate(
+    (element) => element.getBoundingClientRect().left,
+  )
 
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
+  await expect(streamingAssistant.locator("[data-assistant-marker]")).toHaveCount(0)
+  const completedBodyLeft = await streamingAssistantBody.evaluate(
+    (element) => element.getBoundingClientRect().left,
+  )
+  expect(Math.abs(completedBodyLeft - streamingBodyLeft)).toBeLessThanOrEqual(1)
   await page.getByRole("button", { name: "출처 1개 보기" }).click()
   const safeSource = page.getByRole("link", { name: /신생아 수유와 게워냄/u })
   await expect(safeSource).toHaveAttribute("href", /^https:/u)
