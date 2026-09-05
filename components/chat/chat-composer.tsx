@@ -73,6 +73,7 @@ export function ChatComposer({
   const [clearVersion, setClearVersion] = useState(0)
   const [hasTrimmedText, setHasTrimmedText] = useState(false)
   const [selectorOpen, setSelectorOpen] = useState(false)
+  const [selectorTouchPressed, setSelectorTouchPressed] = useState(false)
   const isSending = status === "submitted" || status === "streaming"
   const canStop = isSending
   const canSend = !isNormalizing && (hasTrimmedText || attachments.length > 0)
@@ -161,8 +162,14 @@ export function ChatComposer({
               <DropdownMenuTrigger asChild>
                 <Button
                   aria-label={`모델 ${selectedModel?.label}, 추론 강도 ${selectedEffort?.label}`}
-                  className="min-w-11 rounded-full px-2 text-sm! leading-5! max-[319px]:whitespace-normal"
+                  className="min-w-11 px-2 text-sm! leading-5! data-[touch-pressed]:bg-accent data-[touch-pressed]:text-accent-foreground max-[319px]:whitespace-normal"
+                  data-touch-pressed={selectorTouchPressed ? "" : undefined}
+                  // Radix opens on pointer-down, preventing native :active feedback on touch.
+                  onTouchCancel={() => setSelectorTouchPressed(false)}
+                  onTouchEnd={() => setSelectorTouchPressed(false)}
+                  onTouchStart={() => setSelectorTouchPressed(true)}
                   type="button"
+                  variant="ghost"
                 >
                   {selectedModel?.label} · {selectedEffort?.label}
                 </Button>
