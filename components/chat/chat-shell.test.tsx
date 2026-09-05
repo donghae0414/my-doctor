@@ -492,15 +492,24 @@ describe("ChatShell", () => {
     expect(trigger).toHaveAccessibleName("모델 GPT-5.6 Terra, 추론 강도 최대")
   })
 
-  it("moves the composer to the bottom and renders right user text, Markdown, and safe sources", async () => {
+  it("switches both menu sides as the composer moves and renders messages with safe sources", async () => {
     const user = userEvent.setup()
     render(<ChatShell transport={transportFor(successfulChunks)} />)
 
-    await user.type(
-      screen.getByRole("textbox", { name: "의료 질문" }),
-      "생후 3주 아기가 자주 토해요",
-    )
-    await user.click(screen.getByRole("button", { name: "질문 보내기" }))
+    for (const menuSide of ["bottom", "top"]) {
+      if (menuSide === "top") {
+        await user.type(
+          screen.getByRole("textbox", { name: "의료 질문" }),
+          "생후 3주 아기가 자주 토해요",
+        )
+        await user.click(screen.getByRole("button", { name: "질문 보내기" }))
+      }
+      for (const name of ["사진 첨부", /^모델 /u]) {
+        await user.click(screen.getByRole("button", { name }))
+        expect(screen.getByRole("menu")).toHaveAttribute("data-side", menuSide)
+        await user.keyboard("{Escape}")
+      }
+    }
 
     expect(screen.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "bottom")
     expect(screen.getByText("생후 3주 아기가 자주 토해요").closest("article")).toHaveAttribute(

@@ -68,8 +68,11 @@ test.describe("coarse-pointer composer", () => {
     expect(await model.evaluate((element) => getComputedStyle(element).fontSize)).toBe("14px")
     await assertChatGeometry(page)
 
+    await model.click()
+    await expect(page.getByRole("menu")).toHaveAttribute("data-side", "bottom")
+    await page.keyboard.press("Escape")
     await attachment.click()
-    await expect(page.getByRole("menu")).toHaveAttribute("data-side", "top")
+    await expect(page.getByRole("menu")).toHaveAttribute("data-side", "bottom")
     const fileChooser = page.waitForEvent("filechooser")
     await page.getByRole("menuitem", { name: "사진 선택" }).click()
     await (await fileChooser).setFiles("tests/fixtures/images/task13-valid.jpg")
@@ -166,6 +169,11 @@ test.describe("coarse-pointer composer", () => {
     await page.getByRole("button", { name: "응답 중지" }).click()
     await expect(pending).toHaveCount(0)
     await expect(marker).toHaveCount(0)
+    for (const control of [attachment, model]) {
+      await control.click()
+      await expect(page.getByRole("menu")).toHaveAttribute("data-side", "top")
+      await page.keyboard.press("Escape")
+    }
   })
 })
 

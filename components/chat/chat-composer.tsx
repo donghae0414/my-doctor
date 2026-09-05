@@ -36,6 +36,7 @@ export type ChatComposerDraft = {
 
 type ChatComposerProps = {
   readonly effort: Effort
+  readonly menuSide?: "top" | "bottom"
   readonly model: Model
   readonly normalize?: ImageSelectionNormalizer
   readonly onEffortChange: (effort: Effort) => void
@@ -48,6 +49,7 @@ type ChatComposerProps = {
 
 export function ChatComposer({
   effort,
+  menuSide = "top",
   model,
   normalize,
   onEffortChange,
@@ -134,6 +136,7 @@ export function ChatComposer({
       >
         <ImageAttachmentPicker
           disabled={isSending}
+          menuSide={menuSide}
           {...(normalize === undefined ? {} : { normalize })}
           onBusyChange={handleBusyChange}
           onChange={handleAttachmentsChange}
@@ -158,7 +161,7 @@ export function ChatComposer({
                   {selectedModel?.label} · {selectedEffort?.label}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top">
+              <DropdownMenuContent align="end" side={menuSide}>
                 <DropdownMenuLabel>모델</DropdownMenuLabel>
                 <DropdownMenuRadioGroup onValueChange={handleModelChange} value={model}>
                   {MODEL_OPTIONS.map((option) => (

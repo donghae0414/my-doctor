@@ -294,6 +294,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
           <ChatComposer
             effort={effort}
             key={composerResetKey}
+            menuSide={hasMessages ? "top" : "bottom"}
             model={model}
             {...(imageNormalizer === undefined ? {} : { normalize: imageNormalizer })}
             onEffortChange={setEffort}

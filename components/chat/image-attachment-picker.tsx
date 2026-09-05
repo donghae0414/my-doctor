@@ -45,6 +45,7 @@ type AttachmentEntry = {
 
 type ImageAttachmentPickerProps = {
   readonly disabled: boolean
+  readonly menuSide?: "top" | "bottom"
   readonly normalize?: ImageSelectionNormalizer
   readonly onBusyChange: (busy: boolean) => void
   readonly onChange: (attachments: readonly ReadyImageAttachment[]) => void
@@ -56,6 +57,7 @@ function revoke(entry: AttachmentEntry): void {
 
 export function ImageAttachmentPicker({
   disabled,
+  menuSide = "top",
   normalize = normalizeImages,
   onBusyChange,
   onChange,
@@ -190,7 +192,7 @@ export function ImageAttachmentPicker({
               <PlusIcon aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top">
+          <DropdownMenuContent align="start" side={menuSide}>
             <DropdownMenuPrimitive.Item
               className={menuItemClassName}
               onSelect={() => cameraRef.current?.click()}
