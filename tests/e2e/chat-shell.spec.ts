@@ -345,6 +345,17 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
       }),
   )
   await expect(page.getByRole("button", { name: "최신 메시지로 이동" })).toBeVisible()
+  const latestCenter = await page
+    .getByRole("button", { name: "최신 메시지로 이동" })
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.left + rect.width / 2
+    })
+  const conversationCenter = await page.getByRole("log", { name: "상담 대화" }).evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return rect.left + rect.width / 2
+  })
+  expect(Math.abs(latestCenter - conversationCenter)).toBeLessThanOrEqual(1)
   const awayPosition = await scrollBody.evaluate((element) => element.scrollTop)
   const detachedGrowth = await growAnswer()
   expect(detachedGrowth.top).toBe(awayPosition)

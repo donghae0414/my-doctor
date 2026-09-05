@@ -81,7 +81,7 @@ export function ConversationScrollButton({
   return (
     <Button
       aria-label="최신 메시지로 이동"
-      className={cn("absolute inset-inline-end-4 bottom-4 rounded-full bg-popover", className)}
+      className={cn("absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-popover", className)}
       onClick={(event) => {
         onClick?.(event)
         targetRef.current?.scrollTo({ behavior: "smooth", top: targetRef.current.scrollHeight })
