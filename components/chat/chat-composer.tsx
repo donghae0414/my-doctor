@@ -23,6 +23,7 @@ import {
 import { ImageRequestBudgetError } from "@/lib/images/request-budget"
 import { cn } from "@/lib/utils"
 import { EFFORT_OPTIONS, type Effort, MODEL_OPTIONS, type Model } from "./chat-types"
+import { ChatWelcomeText } from "./chat-welcome-text"
 import {
   ImageAttachmentPicker,
   type ImageSelectionNormalizer,
@@ -47,6 +48,7 @@ type ChatComposerProps = {
   readonly onStop: () => void
   readonly onSubmit: (draft: ChatComposerDraft) => void | Promise<void>
   readonly status: ChatStatus
+  readonly welcomeProgress?: number
 }
 
 export function ChatComposer({
@@ -61,6 +63,7 @@ export function ChatComposer({
   onStop,
   onSubmit,
   status,
+  welcomeProgress = 1,
 }: ChatComposerProps) {
   const [attachments, setAttachments] = useState<readonly ReadyImageAttachment[]>([])
   const [isNormalizing, setIsNormalizing] = useState(false)
@@ -210,7 +213,7 @@ export function ChatComposer({
         ) : null}
       </PromptInput>
       <p className="m-0 break-keep px-2 text-center text-sm leading-5 text-foreground">
-        AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.
+        <ChatWelcomeText kind="disclaimer" progress={welcomeProgress} />
       </p>
     </div>
   )

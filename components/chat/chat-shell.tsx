@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { PlusIcon } from "lucide-react"
 import { m, useReducedMotion } from "motion/react"
+import Image from "next/image"
 import { type UIEvent, useEffect, useRef, useState } from "react"
 import {
   Conversation,
@@ -24,6 +25,7 @@ import { ChatComposer, type ChatComposerDraft } from "./chat-composer"
 import { ChatMessage } from "./chat-message"
 import { hasRenderableMessageContent, textFrom } from "./chat-message-content"
 import type { ChatShellProps, Effort, Model } from "./chat-types"
+import { ChatWelcomeText } from "./chat-welcome-text"
 import { prepareSendMessagesRequest } from "./image-transport"
 
 const defaultTransport = new DefaultChatTransport({
@@ -85,6 +87,8 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
   const [hasAttachmentPreviews, setHasAttachmentPreviews] = useState(false)
   const reduceMotion = useReducedMotion()
   const scrollBodyRef = useRef<HTMLDivElement>(null)
+  const [welcomeProgress, setWelcomeProgress] = useState(0)
+  const welcomeComplete = welcomeProgress === 1
   const contentRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
   const lastScrollTopRef = useRef(0)
@@ -108,6 +112,19 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       : error instanceof TypeError
         ? { code: "offline", message: OFFLINE_FAILURE_MESSAGE }
         : { code: "provider", message: PROVIDER_FAILURE_MESSAGE }
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setWelcomeProgress(1)
+      return
+    }
+    if (welcomeComplete) return
+    const startedAt = performance.now()
+    const interval = setInterval(() => {
+      setWelcomeProgress(Math.min((performance.now() - startedAt) / 1400, 1))
+    }, 20)
+    return () => clearInterval(interval)
+  }, [reduceMotion, welcomeComplete])
 
   useEffect(() => {
     const root = scrollBodyRef.current
@@ -183,6 +200,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
 
   const handleNewChat = () => {
     void stop()
+    setWelcomeProgress(1)
     setIsStopped(false)
     pinnedRef.current = true
     setIsDetached(false)
@@ -225,9 +243,20 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
         </header>
         {showEmptyState ? (
           <ConversationEmptyState
-            className="mt-auto w-[calc(100%-2rem)] max-w-[65ch] p-0"
+            className="mt-auto w-[calc(100%-2rem)] max-w-[65ch] gap-4 p-0 [&>span]:size-24 [&>span]:rounded-none [&>span]:bg-transparent"
             description={null}
-            title="산후 회복·아기 돌봄, 무엇이 궁금하세요?"
+            icon={
+              <Image
+                alt=""
+                className="size-24 object-contain"
+                height={96}
+                loading="eager"
+                src="/images/babyface.png"
+                unoptimized
+                width={96}
+              />
+            }
+            title={<ChatWelcomeText kind="heading" progress={welcomeProgress} />}
           />
         ) : null}
       </div>
@@ -331,6 +360,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
               onStop={handleStop}
               onSubmit={handleSubmit}
               status={status}
+              welcomeProgress={welcomeProgress}
             />
           </m.div>
         </div>

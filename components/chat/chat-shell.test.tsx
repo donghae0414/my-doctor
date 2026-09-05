@@ -8,6 +8,7 @@ import { renderWithMotion as render } from "@/tests/render-with-motion"
 import { ChatComposer } from "./chat-composer"
 import { ChatMessage } from "./chat-message"
 import { ChatShell } from "./chat-shell"
+import { MODEL_OPTIONS } from "./chat-types"
 
 const motionMocks = vi.hoisted(() => ({ reduceMotion: false }))
 
@@ -90,6 +91,59 @@ const successfulChunks = [
 ] satisfies readonly UIMessageChunk[]
 
 describe("ChatShell", () => {
+  it("reveals both welcome copies on one mount clock without blocking send or replaying on new chat", async () => {
+    vi.useFakeTimers()
+    const transport = transportFor(successfulChunks)
+    const send = vi.spyOn(transport, "sendMessages")
+    const { unmount } = render(
+      <StrictMode>
+        <ChatShell transport={transport} />
+      </StrictMode>,
+    )
+    const copies = () => [...document.querySelectorAll("[data-welcome-text]")]
+    const visibleCount = (copy: Element) =>
+      [...copy.children].filter((grapheme) => (grapheme as HTMLElement).style.opacity === "1").length
+    expect(copies()).toHaveLength(2)
+    for (const copy of copies()) {
+      expect(visibleCount(copy)).toBe(0)
+      expect([...copy.children].map((child) => child.textContent)).toEqual(
+        Array.from(
+          new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(copy.textContent ?? ""),
+          ({ segment }) => segment,
+        ),
+      )
+    }
+    act(() => vi.advanceTimersByTime(700))
+    for (const copy of copies()) {
+      expect(visibleCount(copy)).toBe(Math.floor(copy.children.length / 2))
+    }
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "question" } })
+    expect(screen.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
+    await act(async () => fireEvent.submit(screen.getByRole("form")))
+    expect(send).toHaveBeenCalledOnce()
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "새 대화" })))
+    for (const copy of copies()) expect(visibleCount(copy)).toBe(copy.children.length)
+    act(() => vi.advanceTimersByTime(700))
+    for (const copy of copies()) expect(visibleCount(copy)).toBe(copy.children.length)
+    unmount()
+    render(<ChatShell transport={transport} />)
+    for (const copy of copies()) expect(visibleCount(copy)).toBe(0)
+    act(() => vi.advanceTimersByTime(1380))
+    for (const copy of copies()) expect(visibleCount(copy)).toBeLessThan(copy.children.length)
+    act(() => vi.advanceTimersByTime(20))
+    for (const copy of copies()) expect(visibleCount(copy)).toBe(copy.children.length)
+  })
+
+  it("shows the complete welcome immediately under reduced motion", () => {
+    motionMocks.reduceMotion = true
+    render(<ChatShell transport={transportFor(successfulChunks)} />)
+    const copies = [...document.querySelectorAll("[data-welcome-text]")]
+    expect(copies).toHaveLength(2)
+    for (const copy of copies) {
+      for (const grapheme of copy.children) expect(grapheme).toHaveStyle({ opacity: "1" })
+    }
+  })
+
   it("rotates pending decoration on a four-second clock through empty streaming and resets each turn", async () => {
     vi.useFakeTimers()
     let controller!: ReadableStreamDefaultController<UIMessageChunk>
@@ -449,6 +503,14 @@ describe("ChatShell", () => {
     expect(trigger).toHaveTextContent("GPT-5.6 Sol · 보통")
     await user.click(trigger)
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(3)
+    expect(MODEL_OPTIONS.map((option) => option.value)).toEqual([
+      "gpt-5.6-luna",
+      "gpt-5.6-terra",
+      "gpt-5.6-sol",
+    ])
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual(
+      MODEL_OPTIONS.map((option) => option.label),
+    )
     expect(screen.getByRole("menuitemradio", { name: "GPT-5.6 Sol" })).toHaveAttribute(
       "aria-checked",
       "true",
@@ -464,8 +526,8 @@ describe("ChatShell", () => {
       "true",
     )
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(9)
-    expect(screen.getByText("AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.")).toBeVisible()
-    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    expect(document.querySelector("[data-welcome-text='disclaimer']")).toBeVisible()
+    expect(document.querySelector("[data-welcome-text='heading']")).toBeVisible()
     expect(document.querySelectorAll("[data-scroll-owner='conversation']")).toHaveLength(1)
   })
 

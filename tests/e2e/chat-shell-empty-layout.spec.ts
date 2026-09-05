@@ -4,6 +4,111 @@ import { assertChatGeometry } from "./chat-shell-layout"
 
 test.use({ contextOptions: { reducedMotion: "reduce" } })
 
+test.describe("welcome reveal", () => {
+  test.use({ contextOptions: { reducedMotion: "no-preference" }, hasTouch: true })
+
+  test("keeps mobile text wrapping and composer geometry fixed while typing, sending and reentering", async ({
+    page,
+  }, testInfo) => {
+    await page.clock.install({ time: 0 })
+    await page.clock.pauseAt(100)
+    const input = page.getByRole("textbox", { name: "의료 질문" })
+    const copies = page.locator("[data-welcome-text]")
+    const measure = () =>
+      page.evaluate(() => {
+        const root = document.querySelector("[data-chat-state]")
+        const form = document.querySelector("form")
+        if (!root || !form) throw new Error("Missing chat layout")
+        const origin = root.getBoundingClientRect()
+        const bounds = (element: Element) => {
+          const box = element.getBoundingClientRect()
+          return [box.x - origin.x, box.y - origin.y, box.width, box.height]
+        }
+        return {
+          form: bounds(form),
+          graphemes: [...document.querySelectorAll("[data-welcome-text] > span")].map(bounds),
+        }
+      })
+
+    for (const width of [375, 188]) {
+      await page.setViewportSize({ width, height: 812 })
+      await page.goto("/chat-shell-task-10")
+      await input.fill("draft")
+      await expect(page.getByRole("button", { name: "질문 보내기" })).toBeEnabled()
+      await page.evaluate(() => document.fonts.ready)
+      const image = page.locator("img[src='/images/babyface.png']")
+      await image.evaluate((element: HTMLImageElement) => element.decode())
+      const original = await measure()
+      await expect(copies).toHaveCount(2)
+      for (const copy of await copies.all()) {
+        await expect(copy.locator("span").first()).toHaveCSS("opacity", "0")
+      }
+      await page.clock.runFor(700)
+      for (const copy of await copies.all()) {
+        await expect(copy.locator("span").first()).toHaveCSS("opacity", "1")
+        await expect(copy.locator("span").last()).toHaveCSS("opacity", "0")
+      }
+      expect(await measure()).toEqual(original)
+      await page.screenshot({ path: testInfo.outputPath(`welcome-${width}-half.png`) })
+      await page.clock.runFor(700)
+      for (const copy of await copies.all()) {
+        await expect(copy.locator("span").last()).toHaveCSS("opacity", "1")
+      }
+      expect(await measure()).toEqual(original)
+      const imageStyle = await image.evaluate((element: HTMLImageElement) => ({
+        width: element.width,
+        height: element.height,
+        originalWidth: element.naturalWidth,
+        originalHeight: element.naturalHeight,
+        fit: getComputedStyle(element).objectFit,
+        background: getComputedStyle(element.parentElement ?? element).backgroundColor,
+        border: getComputedStyle(element).borderWidth,
+        headingGap:
+          (element.parentElement?.nextElementSibling?.getBoundingClientRect().top ?? 0) -
+          element.getBoundingClientRect().bottom,
+      }))
+      expect(imageStyle).toEqual({
+        width: 96,
+        height: 96,
+        originalWidth: 1254,
+        originalHeight: 1254,
+        fit: "contain",
+        background: "rgba(0, 0, 0, 0)",
+        border: "0px",
+        headingGap: 16,
+      })
+      await testInfo.attach(`welcome-${width}-geometry`, {
+        body: JSON.stringify({ ...original, imageStyle }),
+        contentType: "application/json",
+      })
+      await page.screenshot({ path: testInfo.outputPath(`welcome-${width}-complete.png`) })
+    }
+
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.reload()
+    await input.fill("[pending]")
+    await page.clock.runFor(700)
+    await expect(copies.last().locator("span").last()).toHaveCSS("opacity", "0")
+    await page.getByRole("button", { name: "질문 보내기" }).click()
+    await expect(page.getByTestId("chat-composer-region")).toHaveAttribute(
+      "data-placement",
+      "bottom",
+    )
+    await expect(page.locator("[data-pending-response]")).toBeVisible()
+    await page.getByRole("button", { name: "새 대화" }).click()
+    for (const copy of await copies.all()) {
+      await expect(copy.locator("span").last()).toHaveCSS("opacity", "1")
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await page.reload()
+    await expect(copies).toHaveCount(2)
+    for (const copy of await copies.all()) {
+      await expect(copy.locator("span").first()).toHaveCSS("opacity", "1")
+      await expect(copy.locator("span").last()).toHaveCSS("opacity", "1")
+    }
+  })
+})
+
 for (const theme of ["light", "dark"]) {
   for (const width of [375, 768, 1280]) {
     test(`centers the input card on the viewport at ${width}px in ${theme}`, async ({
@@ -131,7 +236,7 @@ test("prioritizes reachable content over centering when the focused viewport shr
   await input.fill("draft")
   await page.evaluate(() => document.fonts.ready)
   const original = await input.elementHandle()
-  for (const height of [600, 400]) {
+  for (const height of [650, 600, 400]) {
     await page.setViewportSize({ width: 375, height })
     const geometry = await region.evaluate((element) => {
       const form = element.querySelector("form")
@@ -148,14 +253,19 @@ test("prioritizes reachable content over centering when the focused viewport shr
         scrollable: root.scrollHeight > root.clientHeight,
       }
     })
-    if (height === 600) expect(Math.abs(geometry.centerDelta)).toBeLessThanOrEqual(0.5)
+    if (height === 650) expect(Math.abs(geometry.centerDelta)).toBeLessThanOrEqual(0.5)
     else expect(geometry.centerDelta).toBeGreaterThan(0)
     expect(geometry.introTop).toBeGreaterThanOrEqual(geometry.headerBottom + 16)
     expect(geometry.gap).toBe(24)
-    expect(geometry.scrollable).toBe(false)
+    expect(geometry.scrollable).toBe(height === 400)
     await expect(input).toBeFocused()
     await expect(input).toHaveValue("draft")
     expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+    if (geometry.scrollable) {
+      await page.locator("[data-scroll-owner='empty-chat']").evaluate((element) => {
+        element.scrollTop = element.scrollHeight
+      })
+    }
     await assertChatGeometry(page)
     await testInfo.attach(`height-${height}-geometry`, {
       body: JSON.stringify({ viewportHeight: height, ...geometry }),

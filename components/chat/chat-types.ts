@@ -14,9 +14,9 @@ export const EFFORT_OPTIONS = [
 export type Effort = (typeof EFFORT_OPTIONS)[number]["value"]
 
 export const MODEL_OPTIONS = [
-  { label: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
   { label: "GPT-5.6 Luna", value: "gpt-5.6-luna" },
   { label: "GPT-5.6 Terra", value: "gpt-5.6-terra" },
+  { label: "GPT-5.6 Sol", value: "gpt-5.6-sol" },
 ] as const
 
 export type Model = (typeof MODEL_OPTIONS)[number]["value"]

@@ -143,17 +143,17 @@ describe("ChatComposer image attachments", () => {
       />,
     )
 
-    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    expect(document.querySelector("[data-empty-state='conversation']")).toBeVisible()
     const selected = image("preview.jpg")
     await user.upload(screen.getByLabelText("사진 보관함에서 선택"), selected)
-    expect(screen.queryByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).not.toBeInTheDocument()
+    expect(document.querySelector("[data-empty-state='conversation']")).not.toBeInTheDocument()
     await waitFor(() => expect(screen.getByText("이미지 처리 중")).toBeVisible())
 
     resolvePending?.([filePart(selected)])
     await screen.findByText("첨부 완료")
-    expect(screen.queryByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).not.toBeInTheDocument()
+    expect(document.querySelector("[data-empty-state='conversation']")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "preview.jpg 제거" }))
-    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    expect(document.querySelector("[data-empty-state='conversation']")).toBeVisible()
   })
 
   it("clears preview ownership after a successful attachment send and restores the empty prompt after failure or new chat", async () => {
@@ -178,16 +178,16 @@ describe("ChatComposer image attachments", () => {
 
     await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("sent.jpg"))
     await screen.findByText("첨부 완료")
-    expect(screen.queryByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).not.toBeInTheDocument()
+    expect(document.querySelector("[data-empty-state='conversation']")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
     await waitFor(() => expect(screen.queryByTestId("image-preview-grid")).not.toBeInTheDocument())
     await user.click(screen.getByRole("button", { name: "새 대화" }))
-    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    expect(document.querySelector("[data-empty-state='conversation']")).toBeVisible()
     await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("invalid.jpg"))
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "이미지를 읽을 수 없습니다. 다른 이미지를 선택해 주세요.",
     )
-    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    expect(document.querySelector("[data-empty-state='conversation']")).toBeVisible()
   })
 
   it("keeps the final empty-prompt visibility stable through Strict Mode preview cleanup", async () => {
@@ -207,7 +207,7 @@ describe("ChatComposer image attachments", () => {
     await user.upload(screen.getByLabelText("사진 보관함에서 선택"), image("strict.jpg"))
     await screen.findByText("첨부 완료")
     await user.click(screen.getByRole("button", { name: "strict.jpg 제거" }))
-    expect(screen.getByText("산후 회복·아기 돌봄, 무엇이 궁금하세요?")).toBeVisible()
+    expect(document.querySelector("[data-empty-state='conversation']")).toBeVisible()
   })
 
   it("sends selected model and effort with a normalized image turn", async () => {

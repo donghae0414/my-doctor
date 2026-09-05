@@ -257,6 +257,8 @@ Motion communicates input, state, and spatial continuity only. It may animate `t
 
 ### Named motion tokens
 
+The welcome heading and persistent disclaimer reveal complete graphemes simultaneously over 1.4s, once per Chat mount (including refresh/reentry), never on New chat. Full text stays in layout and the accessibility tree; opacity alone changes, with no caret, rewrapping, composer movement, or blocked input/send. Reduced motion displays both immediately. The welcome decoration is the full, uncropped `/images/babyface.png` at 96px, with no background or border and a 16px heading gap. Model menu order is Luna, Terra, Sol; labels and the Sol default are unchanged.
+
 | Token | Exact value | Use |
 | --- | --- | --- |
 | `motion-color` | 150ms, `cubic-bezier(0.4, 0, 0.2, 1)` | Live tweakcn control hover/focus/disabled color and shadow feedback; list only the intended paint properties, not `all`. |
