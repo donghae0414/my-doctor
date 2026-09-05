@@ -195,9 +195,14 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
     <m.main
       animate={{ opacity: 1, y: 0 }}
       aria-label="산후·신생아 의료 상담"
-      className="relative grid h-[100dvh] max-h-[100dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background text-foreground"
+      className={
+        hasMessages
+          ? "relative grid h-[100dvh] max-h-[100dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-background text-foreground"
+          : "relative grid h-[100dvh] max-h-[100dvh] grid-rows-[minmax(min-content,1fr)_auto_minmax(min-content,1fr)] overflow-x-clip overflow-y-auto overscroll-contain bg-background text-foreground"
+      }
       data-chat-state={hasMessages ? "active" : "empty"}
       data-motion-surface="screen"
+      data-scroll-owner={hasMessages ? undefined : "empty-chat"}
       data-stream-stopped={isStopped ? "true" : "false"}
       initial={reduceMotion ? { opacity: 0 } : { opacity: 1, y: 12 }}
       transition={{
@@ -205,16 +210,32 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
         y: SPRING_LAYOUT,
       }}
     >
-      <header className="relative z-10 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-3">
-        <div className="min-w-0">
-          <h1 className="m-0 text-sm font-medium text-foreground">비공개 의료 상담</h1>
-        </div>
-        <Button aria-label="새 대화" onClick={handleNewChat} variant="ghost">
-          <PlusIcon aria-hidden="true" />새 대화
-        </Button>
-      </header>
+      <div
+        className={
+          hasMessages ? "contents" : "col-start-1 row-start-1 flex min-w-0 flex-col gap-4 pb-6"
+        }
+      >
+        <header className="relative z-10 flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-3">
+          <div className="min-w-0">
+            <h1 className="m-0 text-sm font-medium text-foreground">비공개 의료 상담</h1>
+          </div>
+          <Button aria-label="새 대화" onClick={handleNewChat} variant="ghost">
+            <PlusIcon aria-hidden="true" />새 대화
+          </Button>
+        </header>
+        {showEmptyState ? (
+          <ConversationEmptyState
+            className="mt-auto w-[calc(100%-2rem)] max-w-[65ch] p-0"
+            description={null}
+            title="산후 회복·아기 돌봄, 무엇이 궁금하세요?"
+          />
+        ) : null}
+      </div>
 
-      <Conversation aria-label="상담 대화" className="h-full min-h-0">
+      <Conversation
+        aria-label="상담 대화"
+        className={hasMessages ? "col-start-1 row-start-2 h-full min-h-0" : "hidden"}
+      >
         <ConversationContent
           className={hasMessages ? "mx-auto w-full max-w-[calc(65ch+2rem)]" : "flex flex-col"}
           onScroll={handleScroll}
@@ -225,27 +246,19 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
             data-conversation-content=""
             ref={contentRef}
           >
-            {hasMessages ? (
-              messages.map((message, index) => (
-                <ChatMessage
-                  key={message.id}
-                  message={message}
-                  streaming={
-                    status === "streaming" &&
-                    !isStopped &&
-                    !showPending &&
-                    index === messages.length - 1 &&
-                    message.role === "assistant"
-                  }
-                />
-              ))
-            ) : showEmptyState ? (
-              <ConversationEmptyState
-                className="mb-auto pt-4"
-                description={null}
-                title="산후 회복·아기 돌봄, 무엇이 궁금하세요?"
+            {messages.map((message, index) => (
+              <ChatMessage
+                key={message.id}
+                message={message}
+                streaming={
+                  status === "streaming" &&
+                  !isStopped &&
+                  !showPending &&
+                  index === messages.length - 1 &&
+                  message.role === "assistant"
+                }
               />
-            ) : null}
+            ))}
             {showPending ? <PendingResponse /> : null}
             {terminalError !== undefined ? (
               <MessageStatus data-chat-error-code={terminalError.code} tone="error">
@@ -282,28 +295,44 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
         className={
           hasMessages
             ? "relative z-10 min-w-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 max-[319px]:py-0"
-            : "absolute inset-x-4 top-1/2 z-10 min-w-0 -translate-y-1/2"
+            : "col-start-1 row-start-2 row-span-2 grid min-w-0 grid-rows-subgrid px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
         }
+        aria-label="의료 질문 작성 영역"
         data-motion-surface="composer"
         data-placement={hasMessages ? "bottom" : "center"}
         data-testid="chat-composer-region"
-        layout={reduceMotion ? false : "position"}
-        transition={SPRING_LAYOUT}
       >
-        <div className="mx-auto min-w-0 w-full max-w-[65ch]">
-          <ChatComposer
-            effort={effort}
-            key={composerResetKey}
-            menuSide={hasMessages ? "top" : "bottom"}
-            model={model}
-            {...(imageNormalizer === undefined ? {} : { normalize: imageNormalizer })}
-            onEffortChange={setEffort}
-            onHasAttachmentPreviews={setHasAttachmentPreviews}
-            onModelChange={setModel}
-            onStop={handleStop}
-            onSubmit={handleSubmit}
-            status={status}
-          />
+        <div
+          className={
+            hasMessages
+              ? "mx-auto my-auto grid min-w-0 w-full max-w-[65ch] shrink-0 gap-6"
+              : "mx-auto row-span-2 grid min-w-0 w-full max-w-[65ch] grid-rows-subgrid"
+          }
+        >
+          <m.div
+            className={hasMessages ? undefined : "row-span-2 grid grid-rows-subgrid"}
+            layout={reduceMotion ? false : "position"}
+            transition={SPRING_LAYOUT}
+          >
+            <ChatComposer
+              className={
+                hasMessages
+                  ? undefined
+                  : "row-span-2 grid-rows-subgrid gap-0 [&>p]:mt-2 [&>p]:self-start"
+              }
+              effort={effort}
+              key={composerResetKey}
+              menuSide={hasMessages ? "top" : "bottom"}
+              model={model}
+              {...(imageNormalizer === undefined ? {} : { normalize: imageNormalizer })}
+              onEffortChange={setEffort}
+              onHasAttachmentPreviews={setHasAttachmentPreviews}
+              onModelChange={setModel}
+              onStop={handleStop}
+              onSubmit={handleSubmit}
+              status={status}
+            />
+          </m.div>
         </div>
       </m.footer>
     </m.main>

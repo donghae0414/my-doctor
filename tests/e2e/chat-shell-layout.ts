@@ -2,6 +2,31 @@ import type { Page } from "@playwright/test"
 import { expect } from "@playwright/test"
 
 export async function assertChatGeometry(page: Page): Promise<void> {
+  // Measure the settled shell, not an arbitrary frame of its entrance/layout spring.
+  for (const selector of ["[data-chat-state]", "[data-testid='chat-composer-region'] form"]) {
+    await page.locator(selector).evaluate((element) => {
+      const target = element.tagName === "FORM" ? element.parentElement?.parentElement : element
+      if (!target) throw new Error("Missing motion surface")
+      return new Promise<void>((resolve, reject) => {
+        const observer = new MutationObserver(() => {
+          if (getComputedStyle(target).transform !== "none") return
+          clearTimeout(timeout)
+          observer.disconnect()
+          resolve()
+        })
+        const timeout = setTimeout(() => {
+          observer.disconnect()
+          reject(new Error("Chat motion did not settle"))
+        }, 5000)
+        observer.observe(target, { attributes: true, attributeFilter: ["style"] })
+        if (getComputedStyle(target).transform === "none") {
+          clearTimeout(timeout)
+          observer.disconnect()
+          resolve()
+        }
+      })
+    })
+  }
   const result = await page.evaluate(() => {
     const root = document.querySelector<HTMLElement>("[data-chat-state]")
     const composer = document.querySelector<HTMLElement>("[data-testid='chat-composer-region']")

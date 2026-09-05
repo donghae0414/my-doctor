@@ -1,0 +1,226 @@
+import { expect, test } from "@playwright/test"
+
+import { assertChatGeometry } from "./chat-shell-layout"
+
+test.use({ contextOptions: { reducedMotion: "reduce" } })
+
+for (const theme of ["light", "dark"]) {
+  for (const width of [375, 768, 1280]) {
+    test(`centers the input card on the viewport at ${width}px in ${theme}`, async ({
+      page,
+    }, testInfo) => {
+      // Given the empty real chat surface at a required viewport.
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(`/chat-shell-task-10?theme=${theme}`)
+      const region = page.getByTestId("chat-composer-region")
+      await expect(page.locator("[data-empty-state='conversation']")).toBeVisible()
+      await page.evaluate(() => document.fonts.ready)
+
+      // Then the form itself is centered, with the intro above and disclaimer below.
+      const geometry = await region.evaluate((element) => {
+        const intro = document.querySelector("[data-empty-state='conversation']")
+        const title = intro?.querySelector("p")
+        const icon = intro?.querySelector("span")
+        const form = element.querySelector("form")
+        const disclaimer = form?.parentElement?.lastElementChild
+        if (!title || !icon || !form || !disclaimer) throw new Error("Missing empty stack")
+        const titleBounds = title.getBoundingClientRect()
+        const formBounds = form.getBoundingClientRect()
+        const iconBounds = icon.getBoundingClientRect()
+        return {
+          centerDelta: (formBounds.top + formBounds.bottom - innerHeight) / 2,
+          formTop: formBounds.top,
+          formBottom: formBounds.bottom,
+          viewportHeight: innerHeight,
+          disclaimerGap: disclaimer.getBoundingClientRect().top - formBounds.bottom,
+          gap: formBounds.top - titleBounds.bottom,
+          iconBottom: iconBounds.bottom,
+          titleTop: titleBounds.top,
+          centers: [iconBounds, titleBounds, formBounds].map((rect) => rect.left + rect.width / 2),
+        }
+      })
+      expect(Math.abs(geometry.centerDelta)).toBeLessThanOrEqual(0.5)
+      expect(geometry.disclaimerGap).toBe(8)
+      expect(geometry.gap).toBe(24)
+      expect(geometry.iconBottom).toBeLessThan(geometry.titleTop)
+      expect(Math.max(...geometry.centers) - Math.min(...geometry.centers)).toBeLessThanOrEqual(1)
+      await assertChatGeometry(page)
+      await testInfo.attach("geometry", {
+        body: JSON.stringify(geometry),
+        contentType: "application/json",
+      })
+      await page.screenshot({
+        animations: "disabled",
+        path: testInfo.outputPath("empty.png"),
+        fullPage: true,
+      })
+    })
+  }
+}
+
+test("keeps the composer slot while first send removes the intro and restores the bottom row", async ({
+  page,
+}, testInfo) => {
+  // Given a composed question in the empty stack.
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/chat-shell-task-10")
+  const region = page.getByTestId("chat-composer-region")
+  const input = page.getByRole("textbox", { name: "의료 질문" })
+  await input.fill("[pending]")
+  const slot = await region.locator("form").evaluateHandle((form) => form.parentElement)
+  await page.screenshot({ animations: "disabled", path: testInfo.outputPath("before-send.png") })
+
+  // When sending through the existing desktop keyboard surface.
+  await input.press("Enter")
+
+  // Then the intro is gone, the slot is stable, and active scroll ownership is unchanged.
+  await expect(region).toHaveAttribute("data-placement", "bottom")
+  await expect(page.locator("[data-empty-state='conversation']")).toHaveCount(0)
+  expect(
+    await region
+      .locator("form")
+      .evaluate((form, previous) => form.parentElement === previous, slot),
+  ).toBe(true)
+  const placement = await region.evaluate((element) => {
+    const conversation = document.querySelector("[data-scroll-owner='conversation']")
+    if (!conversation) throw new Error("Missing active scroll owner")
+    return {
+      top: element.getBoundingClientRect().top,
+      bottom: element.getBoundingClientRect().bottom,
+      conversationBottom: conversation.getBoundingClientRect().bottom,
+      height: innerHeight,
+      overflow: getComputedStyle(element).overflowY,
+    }
+  })
+  expect(placement.top).toBe(placement.conversationBottom)
+  expect(placement.bottom).toBe(placement.height)
+  expect(placement.overflow).not.toBe("auto")
+  await assertChatGeometry(page)
+  await page.screenshot({ animations: "disabled", path: testInfo.outputPath("after-send.png") })
+  await page.getByRole("button", { name: "응답 중지" }).click()
+})
+
+test("keeps focus and input identity as attachment previews replace the intro", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/chat-shell-task-10")
+  const input = page.getByRole("textbox", { name: "의료 질문" })
+  await input.fill("draft")
+  const original = await input.elementHandle()
+  await page
+    .getByLabel("사진 보관함에서 선택")
+    .setInputFiles("tests/fixtures/images/task13-valid.jpg")
+  await expect(page.getByTestId("image-preview-grid")).toBeVisible()
+  await expect(page.locator("[data-empty-state='conversation']")).toHaveCount(0)
+  await expect(input).toBeFocused()
+  await expect(input).toHaveValue("draft")
+  expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+  await page.getByRole("button", { name: "task13-valid.jpg 제거" }).click()
+  await expect(page.locator("[data-empty-state='conversation']")).toBeVisible()
+  expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+})
+
+test("prioritizes reachable content over centering when the focused viewport shrinks", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/chat-shell-task-10")
+  const region = page.getByTestId("chat-composer-region")
+  const input = page.getByRole("textbox", { name: "의료 질문" })
+  await input.fill("draft")
+  await page.evaluate(() => document.fonts.ready)
+  const original = await input.elementHandle()
+  for (const height of [600, 400]) {
+    await page.setViewportSize({ width: 375, height })
+    const geometry = await region.evaluate((element) => {
+      const form = element.querySelector("form")
+      const intro = document.querySelector("[data-empty-state='conversation']")
+      const header = document.querySelector("header")
+      const root = document.querySelector("[data-scroll-owner='empty-chat']")
+      if (!form || !intro || !header || !root) throw new Error("Missing empty layout")
+      const formBounds = form.getBoundingClientRect()
+      return {
+        centerDelta: (formBounds.top + formBounds.bottom - innerHeight) / 2,
+        introTop: intro.getBoundingClientRect().top,
+        headerBottom: header.getBoundingClientRect().bottom,
+        gap: formBounds.top - intro.getBoundingClientRect().bottom,
+        scrollable: root.scrollHeight > root.clientHeight,
+      }
+    })
+    if (height === 600) expect(Math.abs(geometry.centerDelta)).toBeLessThanOrEqual(0.5)
+    else expect(geometry.centerDelta).toBeGreaterThan(0)
+    expect(geometry.introTop).toBeGreaterThanOrEqual(geometry.headerBottom + 16)
+    expect(geometry.gap).toBe(24)
+    expect(geometry.scrollable).toBe(false)
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue("draft")
+    expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
+    await assertChatGeometry(page)
+    await testInfo.attach(`height-${height}-geometry`, {
+      body: JSON.stringify({ viewportHeight: height, ...geometry }),
+      contentType: "application/json",
+    })
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath(`height-${height}.png`),
+    })
+  }
+})
+
+for (const viewport of [
+  { width: 375, height: 320 },
+  { width: 188, height: 406 },
+]) {
+  test(`keeps an overflowing empty stack keyboard reachable at ${viewport.width}x${viewport.height}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport)
+    await page.goto("/chat-shell-task-10")
+    const region = page.locator("[data-scroll-owner='empty-chat']")
+    const input = page.getByRole("textbox", { name: "의료 질문" })
+    await expect(input).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
+    const start = await region.evaluate((element) => {
+      const header = element.querySelector("header")
+      const intro = element.querySelector("[data-empty-state='conversation']")
+      const form = element.querySelector("form")
+      if (!header || !intro || !form) throw new Error("Missing empty layout")
+      return {
+        top: element.getBoundingClientRect().top,
+        headerTop: header.getBoundingClientRect().top,
+        headerBottom: header.getBoundingClientRect().bottom,
+        introTop: intro.getBoundingClientRect().top,
+        gap: form.getBoundingClientRect().top - intro.getBoundingClientRect().bottom,
+        scrollable: element.scrollHeight > element.clientHeight,
+      }
+    })
+    expect(start.headerTop).toBe(start.top)
+    expect(start.introTop).toBeGreaterThanOrEqual(start.headerBottom + 16)
+    expect(start.gap).toBe(24)
+    expect(start.scrollable).toBe(true)
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("top-reachable.png"),
+    })
+    await input.fill("draft")
+    for (const { control, key } of [
+      { control: page.getByRole("button", { name: "사진 첨부" }), key: "Shift+Tab" },
+      { control: input, key: "Tab" },
+      { control: page.getByRole("button", { name: /^모델 /u }), key: "Tab" },
+      { control: page.getByRole("button", { name: "질문 보내기" }), key: "Tab" },
+    ]) {
+      await page.keyboard.press(key)
+      await expect(control).toBeFocused()
+      const box = await control.boundingBox()
+      if (!box) throw new Error("Missing focused control")
+      expect(box.y).toBeGreaterThanOrEqual(start.top)
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false)
+    await page.screenshot({
+      animations: "disabled",
+      path: testInfo.outputPath("keyboard-reachable.png"),
+    })
+  })
+}

@@ -423,14 +423,31 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   expect(await scrollBody.evaluate((element) => element.scrollTop)).toBe(awayPosition)
 
   await page.getByRole("textbox", { name: "의료 질문" }).fill("중지 확인")
-  await page.getByRole("button", { name: "질문 보내기" }).click()
+  const sendFollowGap = await scrollBody.evaluate(
+    (element) =>
+      new Promise<number>((resolve, reject) => {
+        const content = element.querySelector("[data-conversation-content]")
+        const send = document.querySelector<HTMLButtonElement>("button[aria-label='질문 보내기']")
+        if (!content || !send) throw new Error("Missing send/scroll surface")
+        const observer = new ResizeObserver(() => {
+          if (!content.querySelector("article[data-streaming='true']")) return
+          const gap = element.scrollHeight - element.clientHeight - element.scrollTop
+          if (gap > 2) return
+          clearTimeout(timeout)
+          observer.disconnect()
+          resolve(gap)
+        })
+        const timeout = setTimeout(() => {
+          observer.disconnect()
+          reject(new Error("New send did not reattach scrolling"))
+        }, 5000)
+        observer.observe(content)
+        send.click()
+      }),
+  )
   await expect(page.getByRole("button", { name: "응답 중지" })).toBeEnabled()
   await expect(page.getByText("응답을 준비하고 있습니다.").last()).toBeVisible()
-  expect(
-    await scrollBody.evaluate(
-      (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
-    ),
-  ).toBeLessThanOrEqual(2)
+  expect(sendFollowGap).toBeLessThanOrEqual(2)
   await page.getByRole("button", { name: "응답 중지" }).click()
   await expect(page.locator("[data-chat-state]")).toHaveAttribute("data-stream-stopped", "true")
   await expect(page.getByRole("button", { name: "응답 중지" })).toHaveCount(0)

@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ImageRequestBudgetError } from "@/lib/images/request-budget"
+import { cn } from "@/lib/utils"
 import { EFFORT_OPTIONS, type Effort, MODEL_OPTIONS, type Model } from "./chat-types"
 import {
   ImageAttachmentPicker,
@@ -35,6 +36,7 @@ export type ChatComposerDraft = {
 }
 
 type ChatComposerProps = {
+  readonly className?: string | undefined
   readonly effort: Effort
   readonly menuSide?: "top" | "bottom"
   readonly model: Model
@@ -48,6 +50,7 @@ type ChatComposerProps = {
 }
 
 export function ChatComposer({
+  className,
   effort,
   menuSide = "top",
   model,
@@ -126,7 +129,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="grid min-w-0 gap-2 max-[319px]:gap-0">
+    <div className={cn("grid min-w-0 gap-2 max-[319px]:gap-0", className)}>
       <PromptInput
         allowEmpty={attachments.length > 0}
         aria-label="의료 질문 작성"
