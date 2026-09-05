@@ -14,7 +14,7 @@ async function tap(page: Page, name: string): Promise<void> {
 }
 
 async function selectHighEffort(page: Page): Promise<void> {
-  const trigger = page.locator("button[aria-haspopup='menu']")
+  const trigger = page.locator("button[aria-haspopup='menu'][aria-label^='모델 ']")
   await expect(trigger).toHaveText("GPT-5.6 Sol · 보통")
   await trigger.click()
   const submenu = page.getByRole("menuitem", { name: "추론 강도", exact: true })

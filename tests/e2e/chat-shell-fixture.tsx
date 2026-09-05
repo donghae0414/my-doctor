@@ -29,11 +29,20 @@ const fixtureTransport: ChatTransport<UIMessage> = {
       start(controller) {
         controller.enqueue({ type: "start", messageId: `assistant-${messages.length}` })
         controller.enqueue({ type: "text-start", id: "answer" })
-        controller.enqueue({ type: "text-delta", id: "answer", delta: "응답을 준비하고 있습니다." })
+        if (question?.type !== "text" || !question.text.includes("[pending]")) {
+          controller.enqueue({
+            type: "text-delta",
+            id: "answer",
+            delta: "응답을 준비하고 있습니다.",
+          })
+        }
 
         const continueStream = () => {
-          abortSignal?.removeEventListener("abort", abortStream)
           controller.enqueue({ type: "text-delta", id: "answer", delta: `\n\n${LONG_ANSWER}` })
+        }
+        const finishStream = () => {
+          abortSignal?.removeEventListener("abort", abortStream)
+          window.removeEventListener("chat-shell-continue", continueStream)
           controller.enqueue({ type: "text-end", id: "answer" })
           controller.enqueue({
             type: "source-url",
@@ -52,10 +61,12 @@ const fixtureTransport: ChatTransport<UIMessage> = {
         }
         const abortStream = () => {
           window.removeEventListener("chat-shell-continue", continueStream)
+          window.removeEventListener("chat-shell-finish", finishStream)
           controller.enqueue({ type: "abort", reason: "사용자가 응답을 중지했습니다." })
           controller.close()
         }
-        window.addEventListener("chat-shell-continue", continueStream, { once: true })
+        window.addEventListener("chat-shell-continue", continueStream)
+        window.addEventListener("chat-shell-finish", finishStream, { once: true })
         abortSignal?.addEventListener("abort", abortStream, { once: true })
       },
     })

@@ -30,6 +30,7 @@ async function sendAndFinish(page: import("@playwright/test").Page, question: st
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expect(page.getByText("응답을 준비하고 있습니다.")).toBeVisible()
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+  await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-finish")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
   await page
     .locator("article[data-from='assistant']")
@@ -44,13 +45,137 @@ test.beforeAll(async () => {
   await mkdir(stagingRoot, { recursive: true })
 })
 
+test.describe("coarse-pointer composer", () => {
+  test.use({ hasTouch: true, viewport: { height: 812, width: 375 } })
+
+  test("keeps the compact footer, native picker, multiline entry and pending feedback usable", async ({
+    page,
+  }) => {
+    await openFixture(page)
+    const attachment = page.getByRole("button", { name: "사진 첨부" })
+    const model = page.getByRole("button", { name: /^모델 /u })
+    const send = page.getByRole("button", { name: "질문 보내기" })
+    const controls = await Promise.all(
+      [attachment, model, send].map((control) => control.boundingBox()),
+    )
+    const [left, middle, right] = controls
+    if (!left || !middle || !right)
+      throw new Error("Missing footer control")
+    expect(Math.abs(left.y - middle.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(middle.y - right.y)).toBeLessThanOrEqual(1)
+    expect(left.x + left.width).toBeLessThan(middle.x)
+    expect(middle.x + middle.width).toBeLessThanOrEqual(right.x)
+    expect(await model.evaluate((element) => getComputedStyle(element).fontSize)).toBe("14px")
+    await assertChatGeometry(page)
+
+    await attachment.click()
+    await expect(page.getByRole("menu")).toHaveAttribute("data-side", "top")
+    const fileChooser = page.waitForEvent("filechooser")
+    await page.getByRole("menuitem", { name: "사진 선택" }).click()
+    await (await fileChooser).setFiles("tests/fixtures/images/task13-valid.jpg")
+    await expect(page.getByTestId("image-preview-grid")).toBeVisible()
+    await expect(send).toBeEnabled()
+    const preview = await page.getByTestId("image-preview-grid").boundingBox()
+    const textarea = page.getByRole("textbox", { name: "의료 질문" })
+    const inputBox = await textarea.boundingBox()
+    if (preview === null || inputBox === null) throw new Error("Missing preview/input geometry")
+    expect(preview.y + preview.height).toBeLessThanOrEqual(inputBox.y)
+    await page.getByRole("button", { name: "task13-valid.jpg 제거" }).click()
+
+    await textarea.fill("[pending]")
+    await textarea.press("Enter")
+    await expect(textarea).toHaveValue("[pending]\n")
+    await expect(page.locator("article[data-from='user']")).toHaveCount(0)
+    await textarea.press("x")
+    await page.clock.install()
+    await send.click()
+    const pending = page.locator("[data-pending-response]")
+    await expect(pending).toBeVisible()
+    const pendingHeight = await pending.evaluate(
+      (element) => element.getBoundingClientRect().height,
+    )
+    for (const phase of [1, 2, 0]) {
+      await page.clock.fastForward(4000)
+      await expect(pending.locator(`[data-pending-phrase='${phase}']`)).toHaveAttribute(
+        "data-active",
+        "true",
+      )
+      expect(await pending.evaluate((element) => element.getBoundingClientRect().height)).toBe(
+        pendingHeight,
+      )
+    }
+    const marker = page.locator("[data-assistant-marker]")
+    const markerBox = await marker.boundingBox()
+    expect(markerBox?.width).toBe(10)
+    expect(markerBox?.height).toBe(10)
+    for (const theme of ["light", "dark"]) {
+      await page
+        .locator("[data-chat-state]")
+        .evaluate((element, value) => element.classList.toggle("dark", value === "dark"), theme)
+      const contrasts = await marker.evaluate((element) => {
+        const canvas = document.createElement("canvas")
+        canvas.width = canvas.height = 1
+        const context = canvas.getContext("2d", { willReadFrequently: true })
+        if (context === null) throw new Error("No color conversion context")
+        const rgb = (color: string) => {
+          context.fillStyle = color
+          context.fillRect(0, 0, 1, 1)
+          return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3)
+        }
+        const luminance = (channels: number[]) =>
+          channels.reduce((sum, channel, index) => {
+            const c = channel / 255
+            return (
+              sum +
+              (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4) *
+                ([0.2126, 0.7152, 0.0722][index] ?? 0)
+            )
+          }, 0)
+        const style = getComputedStyle(element)
+        const markerColor = rgb(style.backgroundColor)
+        return {
+          markerColor,
+          primaryColor: rgb(style.getPropertyValue("--primary")),
+          // The decorative pulse trough may fall below 3:1; full opacity must not.
+          fullOpacity: ["--background", "--muted"].map((token) => {
+            const background = rgb(style.getPropertyValue(token))
+            const a = luminance(markerColor)
+            const b = luminance(background)
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+          }),
+        }
+      })
+      expect(contrasts.markerColor, `${theme} primary marker`).toEqual(contrasts.primaryColor)
+      for (const contrast of contrasts.fullOpacity) expect(contrast).toBeGreaterThanOrEqual(3)
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    await openFixture(page)
+    await textarea.fill("[pending]")
+    await send.click()
+    await expect(marker).toHaveCSS("opacity", "1")
+    expect(
+      await marker.evaluate(
+        (element) =>
+          element
+            .getAnimations()
+            .filter(
+              (animation) => animation.effect?.getTiming().iterations === Number.POSITIVE_INFINITY,
+            ).length,
+      ),
+    ).toBe(0)
+    await page.getByRole("button", { name: "응답 중지" }).click()
+    await expect(pending).toHaveCount(0)
+    await expect(marker).toHaveCount(0)
+  })
+})
+
 test("streams the exact chat journey without persistence or unsafe sources", async ({ page }) => {
   await page.setViewportSize({ height: 812, width: 375 })
   await openFixture(page)
 
   await expect(page.getByTestId("chat-composer-region")).toHaveAttribute("data-placement", "center")
   await expect(page.getByRole("combobox")).toHaveCount(0)
-  const modelMenu = page.locator("button[aria-haspopup='menu']")
+  const modelMenu = page.locator("button[aria-haspopup='menu'][aria-label^='모델 ']")
   await expect(modelMenu).toBeVisible()
   await expect(page.getByText(emptyPrompt, { exact: true })).toBeVisible()
   await expect(page.getByText(medicalDisclaimer, { exact: true })).toBeVisible()
@@ -120,16 +245,19 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
       const effect = animation?.effect
       if (!(effect instanceof KeyframeEffect)) return undefined
       return {
+        duration: effect.getTiming().duration,
         keyframes: effect.getKeyframes().map((keyframe) => keyframe["opacity"]),
         repeat: effect.getTiming().iterations,
       }
     })
   expect(markerAnimation).toEqual({
-    keyframes: ["1", "0.96", "1"],
+    duration: 1400,
+    keyframes: ["1", "0.6", "1"],
     repeat: Number.POSITIVE_INFINITY,
   })
 
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+  await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-finish")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
   await expect(streamingAssistant.locator("[data-assistant-marker]")).toHaveCount(0)
   const completedBodyLeft = await streamingAssistantBody.evaluate(
@@ -165,34 +293,125 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   await page.getByRole("textbox", { name: "의료 질문" }).fill("자동 스크롤 확인")
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expect(page.getByRole("button", { name: "응답 중지" })).toBeVisible()
-  const scrollBody = page.locator("[role='log'] > div")
+  const scrollBody = page.locator("[data-scroll-owner='conversation']")
+  const growAnswer = () =>
+    scrollBody.evaluate(
+      (element) =>
+        new Promise<{ gap: number; top: number }>((resolve, reject) => {
+          const content = element.querySelector("[data-conversation-content]")
+          if (content === null) throw new Error("Missing growing content")
+          const initialHeight = content.getBoundingClientRect().height
+          const timeout = setTimeout(() => {
+            observer.disconnect()
+            reject(new Error("No streamed content growth"))
+          }, 5000)
+          const observer = new ResizeObserver(() => {
+            if (content.getBoundingClientRect().height < initialHeight + 96) return
+            clearTimeout(timeout)
+            observer.disconnect()
+            resolve({
+              gap: element.scrollHeight - element.clientHeight - element.scrollTop,
+              top: element.scrollTop,
+            })
+          })
+          observer.observe(content)
+          window.dispatchEvent(new Event("chat-shell-continue"))
+        }),
+    )
+  const followingGrowth = await growAnswer()
+  expect(followingGrowth.gap).toBeLessThanOrEqual(2)
+  await expect(page.locator("article[data-streaming='true']")).toHaveCount(1)
   await scrollBody.evaluate(
     (element) =>
-      new Promise<void>((resolve) => {
-        const sentinel = element.lastElementChild
-        if (sentinel === null) throw new TypeError("missing scroll sentinel")
-        const observer = new IntersectionObserver(
-          ([entry]) => {
-            if (entry?.isIntersecting === false) {
-              observer.disconnect()
-              resolve()
-            }
+      new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("No upward scroll event")), 5000)
+        element.addEventListener(
+          "scroll",
+          () => {
+            clearTimeout(timeout)
+            resolve()
           },
-          { root: element },
+          { once: true },
         )
-        observer.observe(sentinel)
         element.scrollTop = 0
       }),
   )
+  await expect(page.getByRole("button", { name: "최신 메시지로 이동" })).toBeVisible()
   const awayPosition = await scrollBody.evaluate((element) => element.scrollTop)
-  await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+  const detachedGrowth = await growAnswer()
+  expect(detachedGrowth.top).toBe(awayPosition)
+  await scrollBody.evaluate(
+    (element) =>
+      new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Latest scroll did not finish")), 5000)
+        element.addEventListener(
+          "scrollend",
+          () => {
+            clearTimeout(timeout)
+            resolve()
+          },
+          { once: true },
+        )
+        document
+          .querySelector<HTMLButtonElement>("button[aria-label='최신 메시지로 이동']")
+          ?.click()
+      }),
+  )
+  await expect(page.getByRole("button", { name: "최신 메시지로 이동" })).toHaveCount(0)
+  expect((await growAnswer()).gap).toBeLessThanOrEqual(2)
+  await scrollBody.evaluate(
+    (element) =>
+      new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("No manual bottom return")), 5000)
+        element.addEventListener(
+          "scroll",
+          () => {
+            element.addEventListener(
+              "scroll",
+              () => {
+                clearTimeout(timeout)
+                resolve()
+              },
+              { once: true },
+            )
+            element.scrollTop = element.scrollHeight
+          },
+          { once: true },
+        )
+        element.scrollTop = 0
+      }),
+  )
+  expect((await growAnswer()).gap).toBeLessThanOrEqual(2)
+  await scrollBody.evaluate(
+    (element) =>
+      new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("No final upward scroll")), 5000)
+        element.addEventListener(
+          "scroll",
+          () => {
+            clearTimeout(timeout)
+            resolve()
+          },
+          { once: true },
+        )
+        element.scrollTop = 0
+      }),
+  )
+  await expect(page.getByRole("button", { name: "최신 메시지로 이동" })).toBeVisible()
+  await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-finish")))
   await expect(page.getByRole("button", { name: "응답 중지" })).toHaveCount(0)
+  await nextAnimationFrame(page)
   expect(await scrollBody.evaluate((element) => element.scrollTop)).toBe(awayPosition)
 
   await page.getByRole("textbox", { name: "의료 질문" }).fill("중지 확인")
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await expect(page.getByRole("button", { name: "응답 중지" })).toBeEnabled()
   await expect(page.getByText("응답을 준비하고 있습니다.").last()).toBeVisible()
+  expect(
+    await scrollBody.evaluate(
+      (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+    ),
+  ).toBeLessThanOrEqual(2)
   await page.getByRole("button", { name: "응답 중지" }).click()
   await expect(page.locator("[data-chat-state]")).toHaveAttribute("data-stream-stopped", "true")
   await expect(page.getByRole("button", { name: "응답 중지" })).toHaveCount(0)

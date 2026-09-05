@@ -68,12 +68,13 @@ export function ConversationEmptyState({
   )
 }
 
-type ConversationScrollButtonProps = Omit<ComponentProps<typeof Button>, "onClick"> & {
+type ConversationScrollButtonProps = ComponentProps<typeof Button> & {
   readonly targetRef: RefObject<HTMLElement | null>
 }
 
 export function ConversationScrollButton({
   className,
+  onClick,
   targetRef,
   ...props
 }: ConversationScrollButtonProps) {
@@ -81,9 +82,10 @@ export function ConversationScrollButton({
     <Button
       aria-label="최신 메시지로 이동"
       className={cn("absolute inset-inline-end-4 bottom-4 rounded-full bg-popover", className)}
-      onClick={() =>
+      onClick={(event) => {
+        onClick?.(event)
         targetRef.current?.scrollTo({ behavior: "smooth", top: targetRef.current.scrollHeight })
-      }
+      }}
       size="icon"
       {...props}
     >

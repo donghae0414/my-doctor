@@ -44,7 +44,7 @@ export function Message({ children, className, from, streaming = false, ...props
         <>
           {streaming ? (
             <m.span
-              animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.96, 1] }}
+              animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.6, 1] }}
               aria-hidden="true"
               className="absolute top-1.5 -start-[13px] size-2.5 rounded-full bg-primary"
               data-assistant-marker=""

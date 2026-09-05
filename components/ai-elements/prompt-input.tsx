@@ -1,10 +1,8 @@
 "use client"
 
 import { LoaderCircleIcon, SendIcon, SquareIcon } from "lucide-react"
-import { AnimatePresence, m, useReducedMotion } from "motion/react"
 import type { ComponentProps, FormEvent, KeyboardEvent } from "react"
 
-import { REDUCED_OPACITY_TRANSITION, STATE_TRANSITION } from "@/components/motion/motion-tokens"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -60,6 +58,7 @@ export function PromptInputTextarea({ className, onKeyDown, ...props }: PromptIn
     onKeyDown?.(event)
     if (event.defaultPrevented || event.nativeEvent.isComposing) return
     if (event.key === "Enter" && !event.shiftKey) {
+      if (window.matchMedia?.("(pointer: coarse) and (hover: none)").matches) return
       event.preventDefault()
       event.currentTarget.form?.requestSubmit()
     }
@@ -117,7 +116,6 @@ export function PromptInputSubmit({
   status,
   ...props
 }: PromptInputSubmitProps) {
-  const reduceMotion = useReducedMotion()
   const disabled = status === "disabled" || status === "loading"
   const isStopping = status === "submitted" || status === "streaming"
   const label = isStopping ? "응답 중지" : "질문 보내기"
@@ -138,6 +136,7 @@ export function PromptInputSubmit({
       aria-label={label}
       aria-live="polite"
       className={cn(
+        "transition-[color,background-color] duration-150",
         disabled && "disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
         className,
       )}
@@ -146,19 +145,12 @@ export function PromptInputSubmit({
       type={isStopping ? "button" : "submit"}
       variant="default"
     >
-      <AnimatePresence initial={false} mode="sync">
-        <m.span
-          animate={{ filter: "blur(0px)", opacity: 1 }}
-          className="inline-flex"
-          data-motion-surface="composer-action"
-          exit={reduceMotion ? { opacity: 0 } : { filter: "blur(4px)", opacity: 0 }}
-          initial={reduceMotion ? { opacity: 0 } : { filter: "blur(4px)", opacity: 0 }}
-          key={status}
-          transition={reduceMotion ? REDUCED_OPACITY_TRANSITION : STATE_TRANSITION}
-        >
-          {stateIcon}
-        </m.span>
-      </AnimatePresence>
+      <span
+        className="inline-flex size-4 items-center justify-center"
+        data-motion-surface="composer-action"
+      >
+        {stateIcon}
+      </span>
     </Button>
   )
 }

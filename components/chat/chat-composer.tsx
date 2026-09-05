@@ -128,6 +128,7 @@ export function ChatComposer({
       <PromptInput
         allowEmpty={attachments.length > 0}
         aria-label="의료 질문 작성"
+        className="grid-cols-[auto_minmax(0,1fr)] gap-y-0 max-[319px]:gap-x-0"
         key={clearVersion}
         onSubmit={(text) => void handleSubmit(text)}
       >
@@ -139,24 +140,25 @@ export function ChatComposer({
         />
         <PromptInputTextarea
           aria-label="의료 질문"
+          className="col-span-2 row-start-2"
           cols={1}
           disabled={status === "submitted"}
           onChange={(event) => setHasTrimmedText(event.currentTarget.value.trim().length > 0)}
           placeholder="증상과 시점을 적어 주세요"
         />
-        <PromptInputFooter className="max-[319px]:flex-nowrap">
-          <PromptInputTools className="max-[319px]:flex-1">
+        <PromptInputFooter className="col-start-2 row-start-3 flex-nowrap justify-end gap-1 ps-0 max-[319px]:gap-0 max-[319px]:pe-0">
+          <PromptInputTools className="flex-nowrap">
             <DropdownMenu onOpenChange={setSelectorOpen} open={selectorOpen}>
               <DropdownMenuTrigger asChild>
                 <Button
                   aria-label={`모델 ${selectedModel?.label}, 추론 강도 ${selectedEffort?.label}`}
-                  className="rounded-full max-[319px]:w-full max-[319px]:whitespace-normal max-[319px]:px-2"
+                  className="min-w-11 rounded-full px-2 text-sm! leading-5! max-[319px]:whitespace-normal"
                   type="button"
                 >
                   {selectedModel?.label} · {selectedEffort?.label}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
+              <DropdownMenuContent align="end" side="top">
                 <DropdownMenuLabel>모델</DropdownMenuLabel>
                 <DropdownMenuRadioGroup onValueChange={handleModelChange} value={model}>
                   {MODEL_OPTIONS.map((option) => (
@@ -193,7 +195,7 @@ export function ChatComposer({
         </PromptInputFooter>
         {sendError !== undefined ? (
           <p
-            className="m-0 break-keep px-2 text-sm leading-5 text-destructive"
+            className="col-span-2 row-start-5 m-0 break-keep px-2 text-sm leading-5 text-destructive"
             data-send-error-code={sendError.code}
             role="alert"
           >

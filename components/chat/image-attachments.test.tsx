@@ -54,7 +54,7 @@ beforeEach(() => {
 })
 
 describe("ChatComposer image attachments", () => {
-  it("exposes separate rear-camera and gallery image inputs", () => {
+  it("opens the anchored attachment menu and activates the always-mounted camera and gallery inputs", async () => {
     // Given: the authenticated composer is ready.
     render(<ChatComposer {...composerProperties(async (files) => files.map(filePart))} />)
 
@@ -69,6 +69,18 @@ describe("ChatComposer image attachments", () => {
     expect(gallery).not.toHaveAttribute("capture")
     expect(camera).toHaveAttribute("multiple")
     expect(gallery).toHaveAttribute("multiple")
+    const user = userEvent.setup()
+    const cameraClick = vi.spyOn(camera, "click")
+    const galleryClick = vi.spyOn(gallery, "click")
+    await user.click(screen.getByRole("button", { name: "사진 첨부" }))
+    expect(screen.getByRole("menu")).toHaveAttribute("data-side", "top")
+    await user.click(screen.getByRole("menuitem", { name: "사진 촬영" }))
+    expect(cameraClick).toHaveBeenCalledOnce()
+    expect(camera).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "사진 첨부" }))
+    await user.click(screen.getByRole("menuitem", { name: "사진 선택" }))
+    expect(galleryClick).toHaveBeenCalledOnce()
+    expect(gallery).toBeInTheDocument()
   })
 
   it("shows asynchronous previews, allows removal, and sends four normalized current-turn images", async () => {

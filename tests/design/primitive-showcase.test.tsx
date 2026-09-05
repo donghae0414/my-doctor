@@ -80,6 +80,7 @@ describe("AI Elements primitive contract", () => {
       </PromptInput>,
     )
 
+    const iconWrapper = document.querySelector("[data-motion-surface='composer-action']")
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "수유 간격이 궁금해요")
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
 
@@ -97,6 +98,8 @@ describe("AI Elements primitive contract", () => {
       expect(stop).toHaveAttribute("type", "button")
       expect(stop).toBeEnabled()
       expect(stop.querySelector(".lucide-square")).not.toBeNull()
+      expect(document.querySelector("[data-motion-surface='composer-action']")).toBe(iconWrapper)
+      expect(iconWrapper).not.toHaveAttribute("style")
     }
 
     for (const status of ["disabled", "loading"] as const) {
@@ -109,6 +112,7 @@ describe("AI Elements primitive contract", () => {
 
       const send = screen.getByRole("button", { name: "질문 보내기" })
       expect(send).toBeDisabled()
+      expect(document.querySelector("[data-motion-surface='composer-action']")).toBe(iconWrapper)
       expect(send).toHaveClass(
         "disabled:bg-muted",
         "disabled:text-muted-foreground",

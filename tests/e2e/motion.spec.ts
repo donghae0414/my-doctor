@@ -116,20 +116,19 @@ async function assertAssistantMarkerContrast(browser: import("@playwright/test")
           return color
         }
         const markerColor = parseColor(getComputedStyle(marker).backgroundColor)
-        const compose = (background: Rgb): Rgb => [
-          markerColor[0] * 0.96 + background[0] * 0.04,
-          markerColor[1] * 0.96 + background[1] * 0.04,
-          markerColor[2] * 0.96 + background[2] * 0.04,
-        ]
         const background = sample("bg-background")
         const muted = sample("bg-muted")
         return {
-          background: contrast(compose(background), background),
-          muted: contrast(compose(muted), muted),
+          markerColor,
+          primaryColor: sample("bg-primary"),
+          // The decorative pulse trough may fall below 3:1; full opacity must not.
+          background: contrast(markerColor, background),
+          muted: contrast(markerColor, muted),
         }
       })
-      expect(contrasts.background, `${theme} background`).toBeGreaterThanOrEqual(3)
-      expect(contrasts.muted, `${theme} muted`).toBeGreaterThanOrEqual(3)
+      expect(contrasts.markerColor, `${theme} primary marker`).toEqual(contrasts.primaryColor)
+      expect(contrasts.background, `${theme} full-opacity background`).toBeGreaterThanOrEqual(3)
+      expect(contrasts.muted, `${theme} full-opacity muted`).toBeGreaterThanOrEqual(3)
     } finally {
       await context.close()
     }

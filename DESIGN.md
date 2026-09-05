@@ -135,7 +135,7 @@ The following declarations are the exact Tailwind v4 / OKLCH export shown by the
 
 ### Semantic rules and states
 
-- Use semantic variables, never raw color literals in product code. `background` owns the app canvas; `card` owns contained surfaces; `popover` owns floating controls; `muted` and `secondary` own low-emphasis regions; `primary` is interactive, never decorative. Exception: two non-interactive `primary` uses are permitted — the 10px streaming marker absolutely positioned in the conversation's 16px inline-start gutter beside the assistant message's first line, shown only while the pending status ("근거를 확인하고 있어요.") is displayed or that message is streaming, and the 2px inline-start rule on the Sources disclosure. Both are non-text UI and measure ≥3:1 against `background`/`muted` in light and dark; the marker’s 0.96-opacity composite also remains ≥3:1. No other decorative `primary` is permitted.
+- Use semantic variables, never raw color literals in product code. `background` owns the app canvas; `card` owns contained surfaces; `popover` owns floating controls; `muted` and `secondary` own low-emphasis regions; `primary` is reserved for interaction except the 2px inline-start rule on the Sources disclosure and the user-requested orange assistant marker. The fixed 10px streaming marker uses `primary`, absolutely positioned in the conversation's 16px inline-start gutter beside the assistant message's first line, shown only while pending or streaming. Full-opacity `primary` retains ≥3:1 against `background`/`muted` in light and dark; the visible pulse reaches opacity 0.6 and does not retain ≥3:1 throughout. This decorative status-feedback contrast exception is paired with readable pending status or answer text and recorded in Section 8.
 - Prose links use `foreground` text with a `primary` underline (`text-decoration-color`). `primary` text at body size is prohibited: it measures ≈3.5:1 on `background` in light mode, below normal-text AA.
 - Default outline control: `background` + `foreground`, `border`, and `shadow-xs`.
 - Hover: `accent` + `accent-foreground`; do not introduce an opacity-derived accent.
@@ -180,7 +180,7 @@ The exact base radius is `--radius: 1rem` (16px). Tailwind mappings from the exp
 
 - Adopt StyleGallery’s named **scroll-body-shell**: `header / minmax(0, 1fr) body / footer`, bounded by `100dvb`; `100dvh` is the physical CSS equivalent where logical units are unavailable.
 - **The conversation body is the only primary vertical scroll owner.** It has `min-block-size: 0`, `overflow-y: auto`, and `overflow-x: clip`. The page/body, header, and composer do not independently scroll.
-- Header/model controls remain in the auto first row. After the first send, the composer and persistent medical disclaimer occupy the auto footer row. In the empty state, the same composer primitive is centered inside the body; DOM order and focus order remain stable during its visual move.
+- Header controls remain in the auto first row; model controls belong to the composer. After the first send, the composer and persistent medical disclaimer occupy the auto footer row. In the empty state, the same composer primitive is centered inside the body; DOM order and focus order remain stable during its visual move.
 - Conversation content uses a centered intrinsic content limiter near 65ch and never exceeds the available inline size. URLs and source titles use `overflow-wrap: anywhere`; primary content never scrolls horizontally.
 - Safe-area padding composes with the 16px gutter at the footer. Browser sizing functions, safe-area environment values, percentages, and intrinsic keywords are layout mechanics rather than visual tokens.
 
@@ -203,7 +203,7 @@ Only the following task-required primitives are authorized. Their implementation
 - **Variants:** locked; empty authenticated chat; active chat; streaming; bounded error.
 - **States:** body empty/loading/error; header controls default/hover/focus/active/disabled.
 - **Accessibility:** landmarks, stable DOM/focus order, skip-to-composer path, one named scroll region.
-- **Motion:** lock-to-chat and empty-to-active transitions from Section 6; no scroll listener.
+- **Motion:** lock-to-chat and empty-to-active transitions from Section 6. Only ChatShell's conversation scroll handler may track upward user scrolling and manual bottom return; it must not drive decorative motion. ResizeObserver watches the growing inner content, including timed grapheme reveal, independently of sentinel visibility. Auto-follow is instant while attached; only the explicit latest-message button scrolls smoothly. New send reattaches; completion never reattaches a detached reader.
 
 ### Door Lock, Masked Slots, and Keypad
 - **Structure:** labelled masked value/slots, one semantic keypad grid, generic status text, submit semantics on `#`, delete semantics on `*`.
@@ -226,16 +226,16 @@ Only the following task-required primitives are authorized. Their implementation
 - **Accessibility:** ordered message semantics and labelled scroll region.
 
 ### Message
-- **Structure:** user text/images align right inside a `secondary` bubble; assistant Markdown renders without a bubble at full content width, flush with the composer's inline-start edge; the streaming variant floats the `primary` marker in the gutter outside that edge and the completed variant removes it without shifting text; the pending status is plain `muted-foreground` text in the same slot, and only the error status keeps a bordered box; sources align under the assistant text; no reasoning region and no dedicated emergency card.
+- **Structure:** user text/images align right inside a `secondary` bubble with interior newlines preserved; assistant Markdown renders without a bubble at full content width, flush with the composer's inline-start edge; the streaming variant floats the orange `primary` marker in the gutter outside that edge and the completed variant removes it without shifting text; the pending status is plain `muted-foreground` text in the same slot, and only the error status keeps a bordered box; sources align under the assistant text; no reasoning region and no dedicated emergency card.
 - **Variants:** user, assistant, streaming, error.
 - **States:** streaming text updates are unanimated; a newly committed message uses one fade-slide; links use exact interaction states. The 10px `data-assistant-marker` is present only while its caller supplies `streaming`; completion, error, and cancellation remove it without a component-owned lifecycle.
 - **Accessibility:** natural Korean line breaking, safe Markdown landmarks, useful image alternatives, source relationships announced.
 
 ### Prompt Input
-- **Structure:** multiline text input, separate camera and gallery controls, attachment strip, one shadcn `DropdownMenu` pill combining model and effort selection in the footer. The pill shows the selected model's full name, such as `GPT-5.6 Sol · 보통`. Send/stop is the filled `primary` icon-only control; it is the one filled-primary surface in the product.
+- **Structure:** attachment previews above the multiline text input; a single footer row with a bottom-left + opening a shadcn `DropdownMenu` above it for `사진 촬영` and `사진 선택`, and model plus send on the right. Both existing file inputs stay mounted, with environment capture only on the camera input. The compact model/effort pill sits immediately left of send, uses the 14px control size and reduced padding with a 44px minimum target, and retains full labels such as `GPT-5.6 Sol · 보통`. Send/stop is the filled `primary` icon-only control; it is the one filled-primary surface in the product.
 - **Variants:** centered empty-state and fixed-footer active-state; idle, composing, normalizing, submitted, streaming, error.
-- **States:** every control uses the shared state contract; submitted and streaming expose the enabled Square stop action with the accessible name `응답 중지`, while enabled send remains submit.
-- **Accessibility:** labelled textarea, keyboard submit policy, 44px targets, persistent Korean disclaimer, error/status live region.
+- **States:** every control uses the shared state contract; submitted and streaming expose the enabled Square stop action with the accessible name `응답 중지`, while enabled send remains submit. The icon wrapper stays mounted and fixed-size; send/stop swaps immediately, and disabled/enabled transitions change colors only over 150ms without blur or opacity animation.
+- **Accessibility:** labelled textarea, 44px targets, persistent Korean disclaimer, error/status live region. Coarse-pointer/no-hover Enter inserts a newline and the button sends; desktop Enter sends and Shift+Enter inserts a newline. IME composition never submits.
 - **Layout:** cluster + stack composition; wraps before overflow. The empty copy is exactly “산후 회복·아기 돌봄, 무엇이 궁금하세요?” with no secondary description. The persistent medical copy is exactly “AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요.” At 375px these copies target their approved one-line composition; at 319px and 200% zoom they wrap naturally without clipping, shrinking, or content loss.
 
 ### Sources
@@ -252,7 +252,7 @@ Only the following task-required primitives are authorized. Their implementation
 
 ## 6. Motion & Interaction
 
-Motion communicates input, state, and spatial continuity only. It may animate `transform`, `opacity`, and `filter`; color/background/border/box-shadow transitions are allowed as paint-state feedback. Never animate layout properties, never add parallax/magnetic/ripple/loops, and never animate streaming text updates. The sole loop exception is the `data-assistant-marker` opacity-only animation: 1.4s ease-in-out, floor 0.96, and no text or layout animation.
+Motion communicates input, state, and spatial continuity only. It may animate `transform`, `opacity`, and `filter`; color/background/border/box-shadow transitions are allowed as paint-state feedback. Never animate layout properties, never add parallax/magnetic/ripple/loops, and never animate streaming text updates. The marker loop is opacity-only: 1.4s ease-in-out, floor 0.6, fixed 10px size. Pending decoration rotates every 4s with a 200ms opacity-only crossfade through “말씀해 주신 내용을 바탕으로 답변을 준비하고 있어요.”, “기다리시는 동안 잠시 편하게 계셔 주세요.”, and “이해하기 쉽게 안내해 드릴게요.” Its overlapping grid reserves the tallest wrapped phrase. It remains through streaming without current answer text, disappears on first answer text, stop, or error, and restarts at the first phrase for each request/new chat. Screen readers receive one stable pending status, not each decorative rotation.
 
 ### Named motion tokens
 
@@ -273,7 +273,7 @@ Message, source, and thumbnail entry uses opacity 0 plus translateY(12px) to res
 Under `prefers-reduced-motion: reduce` and Motion’s `useReducedMotion`:
 
 - `spring-press`, `spring-layout`, digit translation/blur, shake, and stagger become 0ms with no transform/filter displacement.
-- Screen, message, source, and attachment state changes may use opacity-only `motion-color` where continuity helps; streaming updates remain instant. `data-assistant-marker` is static at opacity 1 under reduced motion.
+- Screen, message, source, and attachment state changes may use opacity-only `motion-color` where continuity helps; streaming updates remain instant. `data-assistant-marker` is static at opacity 1 under reduced motion; pending phrases switch without a fade.
 - Error, pending, success, and focus retain identical text, semantics, color tokens, and reachable controls. Removing motion may never remove feedback.
 
 ## 7. Depth & Surface
@@ -304,4 +304,5 @@ The source uses a **mixed tonal + shallow-shadow** strategy:
 | --- | --- | --- | --- |
 | Outfit export does not pin a Korean-specific webfont | Korean readers; every Korean text surface | Adding a face would violate the exact supplied font export. Generic sans fallback remains functional but may vary by OS. | Product owner + design; exit only with explicit approval to extend the theme, followed by CJK visual QA on target platforms. |
 | Light `primary` / `primary-foreground` is 3.90:1 | Low-vision users; potential filled text controls | Exact palette fidelity is required. The implementation mitigation is mandatory: no normal-size text on this pair. | Component owners; exit if the user approves a palette revision. Until then, primitive QA must reject violating use. |
+| Decorative orange assistant marker falls below 3:1 during its pulse | Low-vision users; pending/streaming marker only | The user explicitly requires theme `primary` with a noticeable 1 → 0.6 → 1 opacity pulse. This temporary, `aria-hidden` decoration accompanies readable pending status or answer text; full opacity remains ≥3:1 and reduced motion stays static at opacity 1. No trough-contrast guarantee is claimed. | Component owners; keep the exception limited to this decoration. Reassess if the marker becomes the sole status cue or the user changes the pulse requirement. |
 | Live source promotion obscured initial reference captures | Evidence consumers only; first extraction screenshots | Third-party promotion is not part of the theme and appeared after load. Attempt logs remain preserved; final parity captures dismiss it and replace the obscured PNGs. | Task 2 evidence; closed by the fresh final six-capture Playwright pass. |

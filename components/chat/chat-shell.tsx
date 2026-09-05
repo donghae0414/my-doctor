@@ -4,11 +4,12 @@ import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { PlusIcon } from "lucide-react"
 import { m, useReducedMotion } from "motion/react"
-import { useEffect, useRef, useState } from "react"
+import { type UIEvent, useEffect, useRef, useState } from "react"
 import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
+  ConversationScrollButton,
 } from "@/components/ai-elements/conversation"
 import { Message, MessageStatus } from "@/components/ai-elements/message"
 import {
@@ -21,7 +22,7 @@ import { fitImageRequestToBudget, omitPriorTurnImageBytes } from "@/lib/images/r
 
 import { ChatComposer, type ChatComposerDraft } from "./chat-composer"
 import { ChatMessage } from "./chat-message"
-import { hasRenderableMessageContent } from "./chat-message-content"
+import { hasRenderableMessageContent, textFrom } from "./chat-message-content"
 import type { ChatShellProps, Effort, Model } from "./chat-types"
 import { prepareSendMessagesRequest } from "./image-transport"
 
@@ -34,6 +35,48 @@ const OFFLINE_FAILURE_MESSAGE = "네트워크 연결이 끊겼습니다. 연결�
 const PROVIDER_FAILURE_MESSAGE =
   "현재 의료 답변과 검색 근거를 제공할 수 없습니다. 잠시 후 다시 시도해 주세요."
 
+const PENDING_PHRASES = [
+  "말씀해 주신 내용을 바탕으로 답변을 준비하고 있어요.",
+  "기다리시는 동안 잠시 편하게 계셔 주세요.",
+  "이해하기 쉽게 안내해 드릴게요.",
+] as const
+
+function PendingResponse() {
+  const [active, setActive] = useState(0)
+  const reduceMotion = useReducedMotion()
+  useEffect(() => {
+    const interval = setInterval(
+      () => setActive((current) => (current + 1) % PENDING_PHRASES.length),
+      4000,
+    )
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <Message from="assistant" streaming>
+      <div data-pending-response="">
+        <MessageStatus className="sr-only">{PENDING_PHRASES[0]}</MessageStatus>
+        <div aria-hidden="true" className="grid text-sm leading-5 text-muted-foreground">
+          {PENDING_PHRASES.map((phrase, index) => (
+            <span
+              className="col-start-1 row-start-1 break-keep [overflow-wrap:anywhere]"
+              data-active={index === active ? "true" : "false"}
+              data-pending-phrase={index}
+              key={phrase}
+              style={{
+                opacity: index === active ? 1 : 0,
+                transition: reduceMotion ? "none" : "opacity 200ms ease-out",
+              }}
+            >
+              {phrase}
+            </span>
+          ))}
+        </div>
+      </div>
+    </Message>
+  )
+}
+
 export function ChatShell({ imageNormalizer, transport = defaultTransport }: ChatShellProps) {
   const [effort, setEffort] = useState<Effort>("medium")
   const [model, setModel] = useState<Model>("gpt-5.6-sol")
@@ -42,12 +85,19 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
   const [hasAttachmentPreviews, setHasAttachmentPreviews] = useState(false)
   const reduceMotion = useReducedMotion()
   const scrollBodyRef = useRef<HTMLDivElement>(null)
-  const endRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
+  const lastScrollTopRef = useRef(0)
+  const [isDetached, setIsDetached] = useState(false)
   const { error, messages, sendMessage, setMessages, status, stop } = useChat({ transport })
   const hasMessages = messages.length > 0
   const showEmptyState = !hasMessages && !hasAttachmentPreviews
   const lastMessage = messages.at(-1)
+  const showPending =
+    (status === "submitted" || status === "streaming") &&
+    !isStopped &&
+    error === undefined &&
+    (lastMessage?.role !== "assistant" || textFrom(lastMessage).trim().length === 0)
   const hasEmptyAssistantResponse =
     status === "ready" &&
     lastMessage?.role === "assistant" &&
@@ -61,33 +111,33 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
 
   useEffect(() => {
     const root = scrollBodyRef.current
-    const target = endRef.current
-    if (root === null || target === null || typeof IntersectionObserver === "undefined") return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        pinnedRef.current = entry?.isIntersecting ?? false
-      },
-      { root, threshold: 0.9 },
-    )
-    observer.observe(target)
+    const content = contentRef.current
+    if (root === null || content === null || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(() => {
+      if (!pinnedRef.current) return
+      root.scrollTop = root.scrollHeight
+      lastScrollTopRef.current = root.scrollTop
+    })
+    observer.observe(content)
     return () => observer.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (messages.length === 0 || pinnedRef.current) {
-      const root = scrollBodyRef.current
-      if (root !== null) root.scrollTop = root.scrollHeight
+  const handleScroll = (event: UIEvent<HTMLDivElement>) => {
+    const root = event.currentTarget
+    const bottom = Math.max(0, root.scrollHeight - root.clientHeight)
+    if (root.scrollTop >= bottom - 2) {
+      pinnedRef.current = true
+      setIsDetached(false)
+    } else if (root.scrollTop < Math.min(lastScrollTopRef.current, bottom)) {
+      pinnedRef.current = false
+      setIsDetached(true)
     }
-  }, [messages])
-
-  useEffect(() => {
-    if ((error === undefined && !hasEmptyAssistantResponse) || !pinnedRef.current) return
-    const root = scrollBodyRef.current
-    if (root !== null) root.scrollTop = root.scrollHeight
-  }, [error, hasEmptyAssistantResponse])
+    lastScrollTopRef.current = root.scrollTop
+  }
 
   const handleSubmit = async (draft: ChatComposerDraft) => {
     pinnedRef.current = true
+    setIsDetached(false)
     setIsStopped(false)
     if (draft.originals.length === 0) {
       void sendMessage({ text: draft.text }, { body: { effort, model } })
@@ -134,6 +184,8 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
   const handleNewChat = () => {
     void stop()
     setIsStopped(false)
+    pinnedRef.current = true
+    setIsDetached(false)
     setMessages([])
     setHasAttachmentPreviews(false)
     setComposerResetKey((current) => current + 1)
@@ -165,52 +217,65 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       <Conversation aria-label="상담 대화" className="h-full min-h-0">
         <ConversationContent
           className={hasMessages ? "mx-auto w-full max-w-[calc(65ch+2rem)]" : "flex flex-col"}
+          onScroll={handleScroll}
           ref={scrollBodyRef}
         >
-          {hasMessages ? (
-            messages.map((message, index) => (
-              <ChatMessage
-                key={message.id}
-                message={message}
-                streaming={
-                  status === "streaming" &&
-                  !isStopped &&
-                  index === messages.length - 1 &&
-                  message.role === "assistant"
-                }
+          <div
+            className="flow-root space-y-6 [overflow-anchor:none]"
+            data-conversation-content=""
+            ref={contentRef}
+          >
+            {hasMessages ? (
+              messages.map((message, index) => (
+                <ChatMessage
+                  key={message.id}
+                  message={message}
+                  streaming={
+                    status === "streaming" &&
+                    !isStopped &&
+                    !showPending &&
+                    index === messages.length - 1 &&
+                    message.role === "assistant"
+                  }
+                />
+              ))
+            ) : showEmptyState ? (
+              <ConversationEmptyState
+                className="mb-auto pt-4"
+                description={null}
+                title="산후 회복·아기 돌봄, 무엇이 궁금하세요?"
               />
-            ))
-          ) : showEmptyState ? (
-            <ConversationEmptyState
-              className="mb-auto pt-4"
-              description={null}
-              title="산후 회복·아기 돌봄, 무엇이 궁금하세요?"
-            />
-          ) : null}
-          {status === "submitted" && !isStopped ? (
-            <Message from="assistant" streaming>
-              <MessageStatus>근거를 확인하고 있어요.</MessageStatus>
-            </Message>
-          ) : null}
-          {terminalError !== undefined ? (
-            <MessageStatus data-chat-error-code={terminalError.code} tone="error">
-              {terminalError.code === "offline" ? (
-                <>
-                  네트워크 연결이 끊겼습니다. 연결을 확인한 뒤{" "}
-                  <span data-semantic-phrase>다시 시도해 주세요.</span>
-                </>
-              ) : (
-                terminalError.message
-              )}
-            </MessageStatus>
-          ) : null}
-          {hasEmptyAssistantResponse ? (
-            <MessageStatus tone="error">
-              답변 내용이 비어 있습니다. 질문을 조금 더 구체적으로 보내 주세요.
-            </MessageStatus>
-          ) : null}
-          <div aria-hidden="true" className="h-px w-full" ref={endRef} />
+            ) : null}
+            {showPending ? <PendingResponse /> : null}
+            {terminalError !== undefined ? (
+              <MessageStatus data-chat-error-code={terminalError.code} tone="error">
+                {terminalError.code === "offline" ? (
+                  <>
+                    네트워크 연결이 끊겼습니다. 연결을 확인한 뒤{" "}
+                    <span data-semantic-phrase>다시 시도해 주세요.</span>
+                  </>
+                ) : (
+                  terminalError.message
+                )}
+              </MessageStatus>
+            ) : null}
+            {hasEmptyAssistantResponse ? (
+              <MessageStatus tone="error">
+                답변 내용이 비어 있습니다. 질문을 조금 더 구체적으로 보내 주세요.
+              </MessageStatus>
+            ) : null}
+            <div aria-hidden="true" className="h-px w-full" />
+          </div>
         </ConversationContent>
+        {isDetached ? (
+          <ConversationScrollButton
+            onClick={() => {
+              pinnedRef.current = true
+              setIsDetached(false)
+            }}
+            targetRef={scrollBodyRef}
+          />
+        ) : null}
       </Conversation>
 
       <m.footer

@@ -79,6 +79,7 @@ test("react-scan lite reports zero unnecessary renders for the Todo12 chat journ
       "응답을 준비하고 있습니다.",
     )
     await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+    await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-finish")))
     await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
     await page.getByRole("button", { name: "출처 1개 보기" }).click()
     await expect(page.getByRole("link", { name: /신생아 수유와 게워냄/u })).toBeVisible()

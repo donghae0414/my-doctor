@@ -12,7 +12,8 @@ const SPATIAL_MOTION_ALLOWLIST = new Set([
 ])
 const SOURCE_EXTENSIONS = new Set([".css", ".ts", ".tsx"])
 const FORBIDDEN_MECHANISMS =
-  /(?:parallax|magnetic|ripple|requestAnimationFrame\s*\([^)]*scroll|addEventListener\s*\(\s*["']scroll|transition-all|animate-spin)/u
+  /(?:parallax|magnetic|ripple|requestAnimationFrame\s*\([^)]*scroll|transition-all|animate-spin)/u
+const SCROLL_HANDLER = /(?:addEventListener\s*\(\s*["']scroll|\bonScroll\s*=)/u
 const SPATIAL_MOTION =
   /(?:whileTap=|\blayout(?:=|\s)|@keyframes|animate-\[|active:scale|transition-transform)/u
 const LOOP_REPEAT = /repeat\s*:/gu
@@ -68,7 +69,19 @@ describe("Todo12 motion source contract", () => {
     })
 
     // When: forbidden Todo12 mechanisms are audited.
-    // Then: the product has no parallax, magnetic, ripple, scroll listener, or layout tween.
+    // Then: the product has no parallax, magnetic, ripple, or layout tween.
+    expect(offenders).toEqual([])
+  })
+
+  it("allows only ChatShell's conversation scroll tracking, not scroll-driven motion", () => {
+    const offenders = SOURCE_ROOTS.flatMap(sourceFiles).flatMap((path) => {
+      const source = readFileSync(resolve(path), "utf8")
+      const remaining =
+        path === "components/chat/chat-shell.tsx"
+          ? source.replace("onScroll={handleScroll}", "")
+          : source
+      return SCROLL_HANDLER.test(remaining) ? [path] : []
+    })
     expect(offenders).toEqual([])
   })
 

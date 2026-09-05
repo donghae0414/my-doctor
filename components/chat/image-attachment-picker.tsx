@@ -1,17 +1,23 @@
 "use client"
 
 import type { FileUIPart } from "ai"
-import { CameraIcon, ImagesIcon } from "lucide-react"
+import { CameraIcon, ImagesIcon, PlusIcon } from "lucide-react"
+import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import type { ChangeEvent } from "react"
 import { useEffect, useRef, useState } from "react"
 
 import { Attachment, Attachments } from "@/components/ai-elements/attachments"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   ImageNormalizationError,
   type ImageNormalizationErrorCode,
   normalizeImages,
 } from "@/lib/images/normalize-image"
-import { cn } from "@/lib/utils"
 
 const MAX_IMAGE_COUNT = 4
 const GENERIC_IMAGE_ERROR = "이미지를 처리하지 못했습니다. 다른 이미지를 선택해 주세요."
@@ -59,6 +65,8 @@ export function ImageAttachmentPicker({
   const entriesRef = useRef<readonly AttachmentEntry[]>([])
   const generationRef = useRef(0)
   const nextIdRef = useRef(0)
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
 
   useEffect(
     () => () => {
@@ -152,16 +160,14 @@ export function ImageAttachmentPicker({
 
   const isNormalizing = entries.some((entry) => entry.status === "loading")
   const inputDisabled = disabled || isNormalizing
-  const controlClassName = cn(
-    "inline-flex size-11 cursor-pointer items-center justify-center rounded-md text-foreground outline-none transition-[color,background-color,border-color,box-shadow,opacity] duration-150 hover:bg-accent hover:text-accent-foreground focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
-    inputDisabled && "pointer-events-none opacity-50",
-  )
+  const menuItemClassName =
+    "flex min-h-11 items-center gap-2 rounded-sm px-2 py-2 text-sm outline-none focus:bg-accent focus:text-accent-foreground [&_svg]:size-4"
 
   return (
-    <div className="grid gap-2 px-1 pt-1">
+    <div className="contents">
       {entries.length > 0 ? (
         <Attachments
-          className="grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))]"
+          className="col-span-2 row-start-1 mb-2 grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] px-1 pt-1"
           data-testid="image-preview-grid"
         >
           {entries.map((entry, index) => (
@@ -177,41 +183,58 @@ export function ImageAttachmentPicker({
           ))}
         </Attachments>
       ) : null}
-      <div className="flex flex-wrap items-center gap-1">
-        <label className={controlClassName}>
-          <CameraIcon aria-hidden="true" className="size-4" />
-          <span className="sr-only">후면 카메라로 촬영</span>
-          <input
-            accept="image/*"
-            aria-label="후면 카메라로 촬영"
-            capture="environment"
-            className="sr-only"
-            disabled={inputDisabled}
-            multiple
-            onChange={handleFiles}
-            type="file"
-          />
-        </label>
-        <label className={controlClassName}>
-          <ImagesIcon aria-hidden="true" className="size-4" />
-          <span className="sr-only">사진 보관함에서 선택</span>
-          <input
-            accept="image/*"
-            aria-label="사진 보관함에서 선택"
-            className="sr-only"
-            disabled={inputDisabled}
-            multiple
-            onChange={handleFiles}
-            type="file"
-          />
-        </label>
-        <span className="text-sm text-foreground" role="status">
+      <div className="col-start-1 row-start-3 self-end pb-1 ps-1 max-[319px]:ps-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button aria-label="사진 첨부" disabled={inputDisabled} size="icon" variant="ghost">
+              <PlusIcon aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top">
+            <DropdownMenuPrimitive.Item
+              className={menuItemClassName}
+              onSelect={() => cameraRef.current?.click()}
+            >
+              <CameraIcon aria-hidden="true" />
+              사진 촬영
+            </DropdownMenuPrimitive.Item>
+            <DropdownMenuPrimitive.Item
+              className={menuItemClassName}
+              onSelect={() => galleryRef.current?.click()}
+            >
+              <ImagesIcon aria-hidden="true" />
+              사진 선택
+            </DropdownMenuPrimitive.Item>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <input
+          accept="image/*"
+          aria-label="후면 카메라로 촬영"
+          capture="environment"
+          className="hidden"
+          disabled={inputDisabled}
+          multiple
+          onChange={handleFiles}
+          ref={cameraRef}
+          type="file"
+        />
+        <input
+          accept="image/*"
+          aria-label="사진 보관함에서 선택"
+          className="hidden"
+          disabled={inputDisabled}
+          multiple
+          onChange={handleFiles}
+          ref={galleryRef}
+          type="file"
+        />
+        <span className="sr-only" role="status">
           {isNormalizing ? "이미지를 처리하고 있습니다." : `${entries.length}/4장 첨부`}
         </span>
       </div>
       {error !== undefined ? (
         <p
-          className="m-0 break-keep text-sm leading-5 text-destructive"
+          className="col-span-2 row-start-4 m-0 break-keep px-1 text-sm leading-5 text-destructive"
           data-image-error-code={error.code}
           role="alert"
         >

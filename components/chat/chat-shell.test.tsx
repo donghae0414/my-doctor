@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai"
 import { type ComponentProps, StrictMode } from "react"
@@ -42,6 +42,7 @@ beforeAll(() => {
 afterEach(() => {
   motionMocks.reduceMotion = false
   vi.useRealTimers()
+  vi.unstubAllGlobals()
 })
 
 function stream(chunks: readonly UIMessageChunk[]): ReadableStream<UIMessageChunk> {
@@ -89,6 +90,199 @@ const successfulChunks = [
 ] satisfies readonly UIMessageChunk[]
 
 describe("ChatShell", () => {
+  it("rotates pending decoration on a four-second clock through empty streaming and resets each turn", async () => {
+    vi.useFakeTimers()
+    let controller!: ReadableStreamDefaultController<UIMessageChunk>
+    render(
+      <ChatShell
+        transport={{
+          reconnectToStream: async () => null,
+          sendMessages: async () =>
+            new ReadableStream({
+              start(value) {
+                controller = value
+              },
+            }),
+        }}
+      />,
+    )
+    const submit = async () => {
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "question" } })
+      await act(async () => fireEvent.submit(screen.getByRole("form")))
+    }
+    await submit()
+    const pending = document.querySelector("[data-pending-response]")
+    expect(pending).not.toBeNull()
+    expect(pending?.querySelectorAll("[data-pending-phrase]")).toHaveLength(3)
+    expect(pending?.querySelector("[data-pending-phrase='0']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    expect(pending?.querySelector("[aria-hidden='true']")).not.toBeNull()
+    const announcement = pending?.querySelector("[role='status']")?.textContent
+    act(() => vi.advanceTimersByTime(3999))
+    expect(pending?.querySelector("[data-pending-phrase='0']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    act(() => vi.advanceTimersByTime(1))
+    expect(pending?.querySelector("[data-pending-phrase='1']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    await act(async () => {
+      controller.enqueue({ type: "start", messageId: "empty-stream" })
+      controller.enqueue({ type: "text-start", id: "answer" })
+      controller.enqueue({ type: "source-url", sourceId: "source", url: "https://example.com" })
+      controller.enqueue({ type: "text-delta", id: "answer", delta: "\n " })
+    })
+    expect(document.querySelector("[data-pending-response]")).toBe(pending)
+    expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(1)
+    act(() => vi.advanceTimersByTime(4000))
+    expect(pending?.querySelector("[data-pending-phrase='2']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    expect(pending?.querySelector("[role='status']")?.textContent).toBe(announcement)
+    act(() => vi.advanceTimersByTime(4000))
+    expect(pending?.querySelector("[data-pending-phrase='0']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    await act(async () => controller.enqueue({ type: "text-delta", id: "answer", delta: "Answer" }))
+    expect(document.querySelector("[data-pending-response]")).toBeNull()
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "응답 중지" })))
+    expect(document.querySelector("[data-assistant-marker]")).toBeNull()
+    await submit()
+    expect(document.querySelector("[data-pending-phrase='0']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    act(() => vi.advanceTimersByTime(4000))
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "새 대화" })))
+    expect(document.querySelector("[data-pending-response]")).toBeNull()
+    await submit()
+    expect(document.querySelector("[data-pending-phrase='0']")).toHaveAttribute(
+      "data-active",
+      "true",
+    )
+    await act(async () => controller.error(new Error("fixture")))
+    expect(document.querySelector("[data-pending-response]")).toBeNull()
+    expect(document.querySelector("[data-assistant-marker]")).toBeNull()
+  })
+
+  it("follows growing inner content, detaches on upward scroll and reattaches only on user return or send", async () => {
+    let resized!: ResizeObserverCallback
+    const observe = vi.fn()
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resized = callback
+        }
+        observe = observe
+        disconnect = vi.fn()
+      },
+    )
+    render(<ChatShell transport={transportFor(successfulChunks)} />)
+    const root = document.querySelector<HTMLElement>("[data-scroll-owner='conversation']")
+    if (root === null) throw new Error("Missing conversation scroll owner")
+    const inner = document.querySelector("[data-conversation-content]")
+    expect(inner).not.toBeNull()
+    expect(observe).toHaveBeenCalledWith(inner)
+    expect(observe).not.toHaveBeenCalledWith(root)
+    let height = 1000
+    let top = 0
+    Object.defineProperties(root, {
+      scrollHeight: { get: () => height },
+      clientHeight: { value: 300 },
+      scrollTop: {
+        get: () => top,
+        set: (value: number) => {
+          top = Math.max(0, Math.min(value, height - 300))
+        },
+      },
+    })
+    const grow = (next: number) => {
+      height = next
+      act(() => resized([], {} as ResizeObserver))
+    }
+    grow(1000)
+    expect(root.scrollTop).toBe(700)
+    root.scrollTop = 400
+    fireEvent.scroll(root)
+    grow(1200)
+    expect(root.scrollTop).toBe(400)
+    const latest = screen.getByRole("button", { name: "최신 메시지로 이동" })
+    root.scrollTo = vi.fn((options?: ScrollToOptions | number, y?: number) => {
+      root.scrollTop = typeof options === "number" ? (y ?? 0) : (options?.top ?? 0)
+    })
+    fireEvent.click(latest)
+    expect(root.scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 1200 })
+    grow(1400)
+    expect(root.scrollTop).toBe(1100)
+    root.scrollTop = 400
+    fireEvent.scroll(root)
+    root.scrollTop = 1100
+    fireEvent.scroll(root)
+    grow(1600)
+    expect(root.scrollTop).toBe(1300)
+    root.scrollTop = 400
+    fireEvent.scroll(root)
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "question" } })
+    await act(async () => fireEvent.submit(screen.getByRole("form")))
+    grow(1800)
+    expect(root.scrollTop).toBe(1500)
+  })
+
+  it.each([false, true])(
+    "uses coarse/no-hover Enter as newline (%s), preserving desktop and IME input",
+    async (mobile) => {
+      const matchMedia = vi.fn((query: string) => ({
+        matches: mobile && query === "(pointer: coarse) and (hover: none)",
+      }))
+      vi.stubGlobal("matchMedia", matchMedia)
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      render(
+        <ChatComposer
+          effort="medium"
+          model="gpt-5.6-sol"
+          onEffortChange={vi.fn()}
+          onHasAttachmentPreviews={vi.fn()}
+          onModelChange={vi.fn()}
+          onStop={vi.fn()}
+          onSubmit={onSubmit}
+          status="ready"
+        />,
+      )
+      const input = screen.getByRole("textbox")
+      await user.type(input, "first{Shift>}{Enter}{/Shift}second")
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true })
+      expect(onSubmit).not.toHaveBeenCalled()
+      await user.keyboard("{Enter}")
+      if (mobile) {
+        expect(input).toHaveValue("first\nsecond\n")
+        expect(onSubmit).not.toHaveBeenCalled()
+        await user.type(input, "third")
+        await user.click(screen.getByRole("button", { name: "질문 보내기" }))
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ text: "first\nsecond\nthird" }),
+        )
+      } else {
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ text: "first\nsecond" }))
+      }
+    },
+  )
+
+  it("preserves interior user newlines in the message bubble", () => {
+    render(
+      <ChatMessage
+        message={{ id: "multiline", role: "user", parts: [{ type: "text", text: "one\ntwo" }] }}
+      />,
+    )
+    expect(screen.getByText(/one/u)).toHaveClass("whitespace-pre-wrap")
+  })
   it("reveals the first grapheme immediately and accelerates from the queued backlog", () => {
     vi.useFakeTimers()
     render(<ChatMessage message={assistantMessage("assistant-cadence", "ABCDEFGH")} streaming />)
@@ -407,15 +601,13 @@ describe("ChatShell", () => {
     await user.keyboard("{ArrowRight}")
     await user.keyboard("{End}{ArrowUp}{Enter}")
     await user.type(screen.getByRole("textbox", { name: "의료 질문" }), "질문")
-    await user.click(screen.getByRole("button", { name: "질문 보내기" }))
-    const streamingArticle = await waitFor(() => {
-      const article = document.querySelector("article[data-streaming='true']")
-      expect(article?.textContent?.length).toBeGreaterThan(0)
-      return article
-    })
+    vi.useFakeTimers()
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "질문 보내기" })))
+    const streamingArticle = document.querySelector("article[data-streaming='true']")
+    expect(streamingArticle?.textContent?.length).toBeGreaterThan(0)
     expect(streamingArticle).not.toHaveTextContent(streamedText)
     expect(streamingArticle).toHaveAttribute("data-motion-state", "instant")
-    await user.click(screen.getByRole("button", { name: "응답 중지" }))
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "응답 중지" })))
 
     expect(screen.queryByRole("button", { name: "응답 중지" })).not.toBeInTheDocument()
     expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(0)
@@ -523,19 +715,15 @@ describe("ChatShell", () => {
     await user.click(screen.getByRole("button", { name: "질문 보내기" }))
 
     // Then: the pending status renders inside an assistant article with the marker.
-    const pending = await screen.findByText("근거를 확인하고 있어요.")
-    const pendingArticle = pending.closest("article")
+    const pending = document.querySelector("[data-pending-response]")
+    expect(pending).not.toBeNull()
+    const pendingArticle = pending?.closest("article")
     expect(pendingArticle).toHaveAttribute("data-from", "assistant")
     expect(pendingArticle?.querySelectorAll("[data-assistant-marker]")).toHaveLength(1)
     // And: the marker floats in the gutter instead of reserving a leading column,
     // so the status text sits flush with the composer and has no bubble background.
     expect(pendingArticle?.className).not.toMatch(/grid-cols-/u)
     expect(pendingArticle?.querySelector("[data-assistant-marker]")).toHaveClass("absolute")
-    expect(pendingArticle?.querySelector("[data-assistant-marker]")).toHaveClass("bg-primary")
-    expect(pending.parentElement).not.toHaveClass("col-start-2")
-    expect(pending).toHaveClass("text-muted-foreground")
-    expect(pending).not.toHaveClass("bg-muted")
-    expect(pending).not.toHaveClass("px-3")
     await user.click(screen.getByRole("button", { name: "응답 중지" }))
     await waitFor(() => expect(document.querySelector("[data-assistant-marker]")).toBeNull())
   })

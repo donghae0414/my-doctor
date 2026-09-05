@@ -125,6 +125,7 @@ async function exerciseChat(page: import("@playwright/test").Page, mode: MotionM
   await page.getByRole("textbox", { name: "의료 질문" }).fill("근거 출처를 확인해 주세요")
   await page.getByRole("button", { name: "질문 보내기" }).click()
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+  await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-finish")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
   await page.getByRole("button", { name: "출처 1개 보기" }).click()
   await expect(page.getByRole("link", { name: /신생아 수유와 게워냄/u })).toBeVisible()
