@@ -38,6 +38,17 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Verification
 
+### Mandatory Luna-only application testing policy
+
+- **Cost constraint: Luna is the ONLY permitted application LLM model during testing. This restriction does NOT apply to the models running coding agents or test/QA agents.**
+- All test-related application LLM requests, including manual tests, automated tests, integration tests, end-to-end tests, smoke tests, and QA, MUST explicitly select Luna. Never inherit a production default or use Sol, Terra, or another model.
+- Before making a real application LLM call in a test, verify that the request explicitly targets Luna.
+- If the application's Luna model is unavailable or the request model cannot be verified, STOP the affected real-API test and report the blocker. **Never substitute another application model**, including for failures or retries. Mocked tests and checks that make no real LLM calls may continue.
+- Prefer existing mocks and fixtures when a real LLM call is unnecessary. These incur no application LLM costs and do not require a live Luna model.
+- Do not change the production model default merely to comply with this testing policy; select Luna at the test boundary.
+
+### Required checks
+
 - Run the focused test for the changed behavior, then `pnpm lint` and `pnpm typecheck`.
 - Run `pnpm build` for routing, configuration, dependency, or production-boundary changes.
 - Run the relevant Playwright test when a user-visible flow changes.
