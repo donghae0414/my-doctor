@@ -60,7 +60,7 @@ const artifactNames = [
 
 test.use({ trace: "off", video: "off" })
 
-async function assertAssistantMarkerContrast(browser: import("@playwright/test").Browser) {
+async function assertAssistantMarkerPhoto(browser: import("@playwright/test").Browser) {
   for (const theme of ["light", "dark"] as const) {
     const context = await browser.newContext({
       reducedMotion: "no-preference",
@@ -71,64 +71,61 @@ async function assertAssistantMarkerContrast(browser: import("@playwright/test")
       await page.goto(`/motion-task-12?theme=${theme}`)
       await page.getByRole("textbox", { name: "의료 질문" }).fill("대비를 확인합니다")
       await page.getByRole("button", { name: "질문 보내기" }).click()
-      await expect(page.locator("[data-assistant-marker]")).toBeVisible()
-      const contrasts = await page.evaluate(() => {
-        type Rgb = readonly [number, number, number]
-        const parseColor = (value: string): Rgb => {
-          const canvas = document.createElement("canvas")
-          canvas.height = 1
-          canvas.width = 1
-          const context = canvas.getContext("2d", { willReadFrequently: true })
-          if (context === null) throw new TypeError("2D color conversion is unavailable")
-          context.fillStyle = value
-          context.fillRect(0, 0, 1, 1)
-          const channels = context.getImageData(0, 0, 1, 1).data
-          if (channels.length < 3) throw new TypeError(`color conversion failed: ${value}`)
-          const [red = 0, green = 0, blue = 0] = channels
-          return [red, green, blue]
-        }
-        const linearize = (channel: number) => {
-          const normalized = channel / 255
-          return normalized <= 0.04045
-            ? normalized / 12.92
-            : ((normalized + 0.055) / 1.055) ** 2.4
-        }
-        const relativeLuminance = ([red, green, blue]: Rgb) =>
-          linearize(red) * 0.2126 + linearize(green) * 0.7152 + linearize(blue) * 0.0722
-        const contrast = (foreground: Rgb, background: Rgb) => {
-          const foregroundLuminance = relativeLuminance(foreground)
-          const backgroundLuminance = relativeLuminance(background)
-          return (
-            (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
-            (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
-          )
-        }
-        const marker = document.querySelector("[data-assistant-marker]")
-        if (!(marker instanceof HTMLElement)) throw new TypeError("assistant marker is missing")
-        const sample = (className: string) => {
-          const element = document.createElement("div")
-          element.className = className
-          const parent = marker.parentElement
-          if (parent === null) throw new TypeError("assistant marker parent is missing")
-          parent.append(element)
-          const color = parseColor(getComputedStyle(element).backgroundColor)
-          element.remove()
-          return color
-        }
-        const markerColor = parseColor(getComputedStyle(marker).backgroundColor)
-        const background = sample("bg-background")
-        const muted = sample("bg-muted")
+      const marker = page.locator("[data-assistant-marker]")
+      await expect(marker).toBeVisible()
+      await expect(marker).toHaveAttribute("aria-hidden", "true")
+      await expect(marker).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
+      const photo = marker.locator("img")
+      await expect(photo).toHaveAttribute("src", "/images/babyface.png")
+      await expect(photo).toHaveAttribute("alt", "")
+      await expect(photo).toHaveAttribute("width", "20")
+      await expect(photo).toHaveAttribute("height", "20")
+      await expect(photo).toHaveCSS("object-fit", "contain")
+      const photoSize = await photo.evaluate(async (element: HTMLImageElement) => {
+        await element.decode()
+        const rect = element.getBoundingClientRect()
+        return { height: rect.height, loaded: element.naturalWidth > 0, width: rect.width }
+      })
+      expect(photoSize, `${theme} marker photo`).toEqual({ height: 20, loaded: true, width: 20 })
+      const geometry = await marker.evaluate((element) => {
+        const article = element.parentElement
+        const body = article?.querySelector(":scope > div")
+        if (!article || !body) throw new Error("Missing assistant article/body")
+        const rect = element.getBoundingClientRect()
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )
         return {
-          markerColor,
-          primaryColor: sample("bg-primary"),
-          // The decorative pulse trough may fall below 3:1; full opacity must not.
-          background: contrast(markerColor, background),
-          muted: contrast(markerColor, muted),
+          bodyLeft: body.getBoundingClientRect().left,
+          height: rect.height,
+          left: rect.left,
+          right: rect.right,
+          topOffset: rect.top - article.getBoundingClientRect().top,
+          visible: element.contains(hit),
+          width: rect.width,
         }
       })
-      expect(contrasts.markerColor, `${theme} primary marker`).toEqual(contrasts.primaryColor)
-      expect(contrasts.background, `${theme} full-opacity background`).toBeGreaterThanOrEqual(3)
-      expect(contrasts.muted, `${theme} full-opacity muted`).toBeGreaterThanOrEqual(3)
+      expect(geometry.width).toBe(20)
+      expect(geometry.height).toBe(20)
+      expect(geometry.topOffset).toBeCloseTo(0, 1)
+      expect(geometry.left).toBeGreaterThanOrEqual(0)
+      expect(geometry.right).toBeLessThanOrEqual(geometry.bodyLeft)
+      expect(geometry.visible).toBe(true)
+      const animation = await marker.evaluate((element) => {
+        const effect = element.getAnimations().at(0)?.effect
+        if (!(effect instanceof KeyframeEffect)) throw new Error("Missing marker animation")
+        return {
+          duration: effect.getTiming().duration,
+          keyframes: effect.getKeyframes().map((keyframe) => keyframe["opacity"]),
+          repeat: effect.getTiming().iterations,
+        }
+      })
+      expect(animation).toEqual({
+        duration: 1400,
+        keyframes: ["1", "0.6", "1"],
+        repeat: Number.POSITIVE_INFINITY,
+      })
     } finally {
       await context.close()
     }
@@ -149,7 +146,7 @@ test("records the exact normal and reduced Todo12 motion contract", async () => 
   await mkdir(stagingRoot, { recursive: true })
   try {
     for (const mode of modes) await runMotionMode(browser, mode, stagingRoot)
-    await assertAssistantMarkerContrast(browser)
+    await assertAssistantMarkerPhoto(browser)
     for (const mode of modes) {
       for (const width of CAPTURE_WIDTHS) {
         await rename(

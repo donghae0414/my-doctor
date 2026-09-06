@@ -102,13 +102,16 @@ describe("ChatShell", () => {
     )
     const copies = () => [...document.querySelectorAll("[data-welcome-text]")]
     const visibleCount = (copy: Element) =>
-      [...copy.children].filter((grapheme) => (grapheme as HTMLElement).style.opacity === "1").length
+      [...copy.children].filter((grapheme) => (grapheme as HTMLElement).style.opacity === "1")
+        .length
     expect(copies()).toHaveLength(2)
     for (const copy of copies()) {
       expect(visibleCount(copy)).toBe(0)
       expect([...copy.children].map((child) => child.textContent)).toEqual(
         Array.from(
-          new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(copy.textContent ?? ""),
+          new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
+            copy.textContent ?? "",
+          ),
           ({ segment }) => segment,
         ),
       )
@@ -380,6 +383,9 @@ describe("ChatShell", () => {
     rerender(<ChatMessage message={message} streaming />)
     expect(response).toHaveTextContent(/^ABCDEFGH$/u)
     expect(document.querySelector("[data-streamdown-mode='static']")).not.toBeNull()
+    const marker = response?.querySelector("[data-assistant-marker]")
+    expect(marker).toHaveStyle({ opacity: "1" })
+    expect(marker?.querySelector("img")).toHaveAttribute("src", "/images/babyface.png")
 
     act(() => vi.advanceTimersByTime(1_000))
     expect(response).toHaveTextContent(/^ABCDEFGH$/u)
@@ -404,11 +410,16 @@ describe("ChatShell", () => {
     expect(response).toHaveTextContent(/^A$/u)
     expect(document.querySelector("[data-streamdown-mode='streaming']")).not.toBeNull()
     expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(1)
+    const photo = response?.querySelector("[data-assistant-marker] img")
+    expect(photo).toHaveAttribute("src", "/images/babyface.png")
+    expect(photo).toHaveAttribute("width", "20")
+    expect(photo).toHaveAttribute("height", "20")
 
     rerender(<ChatMessage message={message} streaming={false} />)
     expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
     expect(document.querySelector("[data-streamdown-mode='static']")).not.toBeNull()
     expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(0)
+    expect(photo).not.toBeInTheDocument()
 
     act(() => vi.advanceTimersByTime(1_000))
     expect(response).toHaveTextContent(/^ABCDEFGHI$/u)
@@ -678,10 +689,15 @@ describe("ChatShell", () => {
     expect(streamingArticle?.textContent?.length).toBeGreaterThan(0)
     expect(streamingArticle).not.toHaveTextContent(streamedText)
     expect(streamingArticle).toHaveAttribute("data-motion-state", "instant")
+    const photo = streamingArticle?.querySelector("[data-assistant-marker] img")
+    expect(photo).toHaveAttribute("src", "/images/babyface.png")
+    expect(photo).toHaveAttribute("width", "20")
+    expect(photo).toHaveAttribute("height", "20")
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "응답 중지" })))
 
     expect(screen.queryByRole("button", { name: "응답 중지" })).not.toBeInTheDocument()
     expect(document.querySelectorAll("[data-assistant-marker]")).toHaveLength(0)
+    expect(photo).not.toBeInTheDocument()
     expect(screen.getByText(streamedText)).toBeVisible()
     expect(screen.getByText(streamedText).closest("article")).toHaveAttribute(
       "data-streaming",
@@ -794,9 +810,19 @@ describe("ChatShell", () => {
     // And: the marker floats in the gutter instead of reserving a leading column,
     // so the status text sits flush with the composer and has no bubble background.
     expect(pendingArticle?.className).not.toMatch(/grid-cols-/u)
-    expect(pendingArticle?.querySelector("[data-assistant-marker]")).toHaveClass("absolute")
-    await user.click(screen.getByRole("button", { name: "응답 중지" }))
-    await waitFor(() => expect(document.querySelector("[data-assistant-marker]")).toBeNull())
+    const marker = pendingArticle?.querySelector("[data-assistant-marker]")
+    expect(marker).toHaveClass("absolute", "-start-5", "top-0.5", "size-5")
+    expect(marker).not.toHaveClass("bg-primary", "rounded-full")
+    expect(marker).toHaveAttribute("aria-hidden", "true")
+    const photo = marker?.querySelector("img")
+    expect(photo).toHaveAttribute("src", "/images/babyface.png")
+    expect(photo).toHaveAttribute("width", "20")
+    expect(photo).toHaveAttribute("height", "20")
+    expect(photo).toHaveAttribute("alt", "")
+    expect(photo).toHaveClass("size-5", "object-contain")
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "응답 중지" })))
+    expect(document.querySelector("[data-assistant-marker]")).toBeNull()
+    expect(photo).not.toBeInTheDocument()
   })
 
   it("shows an exact offline terminal when network transport fails", async () => {

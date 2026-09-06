@@ -226,6 +226,108 @@ test("keeps focus and input identity as attachment previews replace the intro", 
   expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
 })
 
+test("keeps the empty composer visible when only the visual viewport changes", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.addInitScript(() => {
+    const viewport = window.visualViewport
+    if (!viewport) throw new Error("VisualViewport is unavailable")
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: innerHeight, writable: true },
+      offsetTop: { configurable: true, value: 0, writable: true },
+    })
+  })
+  await page.goto("/chat-shell-task-10")
+  await page.evaluate(() => document.fonts.ready)
+  const input = page.getByRole("textbox", { name: "의료 질문" })
+  await input.fill("draft")
+  await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(1, 3))
+  const originalInput = await input.elementHandle()
+  const originalForm = await page.getByRole("form").elementHandle()
+
+  for (const [height, offsetTop, event] of [
+    [650, 0, "resize"],
+    [360, 50, "resize"],
+    [360, 90, "scroll"],
+    [812, 0, "resize"],
+  ] as const) {
+    // Subscribe before dispatch; the application alone must move its empty scroll root.
+    await page.evaluate(
+      ({ height, offsetTop, event }) => {
+        const viewport = window.visualViewport
+        const root = document.querySelector<HTMLElement>("[data-chat-state='empty']")
+        if (!viewport || !root) throw new Error("Missing empty visual viewport layout")
+        return new Promise<void>((resolve, reject) => {
+          const observer = new MutationObserver(() => {
+            if (root.style.height !== `${height}px` || root.style.top !== `${offsetTop}px`) return
+            clearTimeout(timeout)
+            observer.disconnect()
+            resolve()
+          })
+          const timeout = setTimeout(() => {
+            observer.disconnect()
+            reject(new Error("Empty layout did not adopt the visual viewport"))
+          }, 5000)
+          observer.observe(root, { attributes: true, attributeFilter: ["style"] })
+          Object.assign(viewport, { height, offsetTop })
+          viewport.dispatchEvent(new Event(event))
+        })
+      },
+      { height, offsetTop, event },
+    )
+
+    const geometry = await page.getByRole("form").evaluate((form) => {
+      const root = document.querySelector<HTMLElement>("[data-chat-state='empty']")
+      const send = form.querySelector("button[type='submit']")
+      if (!root || !send) throw new Error("Missing empty composer controls")
+      const formBounds = form.getBoundingClientRect()
+      const sendBounds = send.getBoundingClientRect()
+      const rootBounds = root.getBoundingClientRect()
+      return {
+        layoutHeight: innerHeight,
+        rootHeight: rootBounds.height,
+        rootTop: rootBounds.top,
+        formTop: formBounds.top,
+        formBottom: formBounds.bottom,
+        sendTop: sendBounds.top,
+        sendBottom: sendBounds.bottom,
+        scrollTop: root.scrollTop,
+        documentScrollTop: document.documentElement.scrollTop,
+      }
+    })
+    expect(geometry.layoutHeight).toBe(812)
+    expect(geometry.rootHeight).toBe(height)
+    expect(geometry.rootTop).toBe(offsetTop)
+    expect(geometry.formTop).toBeGreaterThanOrEqual(offsetTop)
+    expect(geometry.formBottom).toBeLessThanOrEqual(offsetTop + height)
+    expect(geometry.sendTop).toBeGreaterThanOrEqual(offsetTop)
+    expect(geometry.sendBottom).toBeLessThanOrEqual(offsetTop + height)
+    expect(geometry.documentScrollTop).toBe(0)
+    if (height === 360) expect(geometry.scrollTop).toBeGreaterThan(0)
+    else
+      expect(
+        Math.abs((geometry.formTop + geometry.formBottom) / 2 - offsetTop - height / 2),
+      ).toBeLessThanOrEqual(0.5)
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue("draft")
+    expect(await input.evaluate((element, previous) => element === previous, originalInput)).toBe(
+      true,
+    )
+    expect(
+      await page
+        .getByRole("form")
+        .evaluate((element, previous) => element === previous, originalForm),
+    ).toBe(true)
+    expect(
+      await input.evaluate((element: HTMLTextAreaElement) => [
+        element.selectionStart,
+        element.selectionEnd,
+      ]),
+    ).toEqual([1, 3])
+    await expect(page.locator("[data-empty-state='conversation']")).toHaveCount(1)
+    await assertChatGeometry(page)
+  }
+})
+
 test("prioritizes reachable content over centering when the focused viewport shrinks", async ({
   page,
 }, testInfo) => {
@@ -238,6 +340,10 @@ test("prioritizes reachable content over centering when the focused viewport shr
   const original = await input.elementHandle()
   for (const height of [650, 600, 400]) {
     await page.setViewportSize({ width: 375, height })
+    await expect(page.locator("[data-scroll-owner='empty-chat']")).toHaveCSS(
+      "height",
+      `${height}px`,
+    )
     const geometry = await region.evaluate((element) => {
       const form = element.querySelector("form")
       const intro = document.querySelector("[data-empty-state='conversation']")
@@ -261,11 +367,6 @@ test("prioritizes reachable content over centering when the focused viewport shr
     await expect(input).toBeFocused()
     await expect(input).toHaveValue("draft")
     expect(await input.evaluate((element, previous) => element === previous, original)).toBe(true)
-    if (geometry.scrollable) {
-      await page.locator("[data-scroll-owner='empty-chat']").evaluate((element) => {
-        element.scrollTop = element.scrollHeight
-      })
-    }
     await assertChatGeometry(page)
     await testInfo.attach(`height-${height}-geometry`, {
       body: JSON.stringify({ viewportHeight: height, ...geometry }),

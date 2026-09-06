@@ -86,6 +86,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
   const [composerResetKey, setComposerResetKey] = useState(0)
   const [hasAttachmentPreviews, setHasAttachmentPreviews] = useState(false)
   const reduceMotion = useReducedMotion()
+  const mainRef = useRef<HTMLElement>(null)
   const scrollBodyRef = useRef<HTMLDivElement>(null)
   const [welcomeProgress, setWelcomeProgress] = useState(0)
   const welcomeComplete = welcomeProgress === 1
@@ -95,6 +96,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
   const [isDetached, setIsDetached] = useState(false)
   const { error, messages, sendMessage, setMessages, status, stop } = useChat({ transport })
   const hasMessages = messages.length > 0
+  const emptyComposerKey = hasMessages ? undefined : composerResetKey
   const showEmptyState = !hasMessages && !hasAttachmentPreviews
   const lastMessage = messages.at(-1)
   const showPending =
@@ -125,6 +127,69 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
     }, 20)
     return () => clearInterval(interval)
   }, [reduceMotion, welcomeComplete])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const root = mainRef.current
+    const form = root?.querySelector("form")
+    const textarea = form?.querySelector("textarea")
+    const actions = textarea?.nextElementSibling
+    if (emptyComposerKey === undefined || !viewport || !root || !form || !textarea || !actions)
+      return
+    let frame: number | undefined
+    const clearViewportStyles = () => {
+      for (const property of ["position", "left", "right", "top", "height", "max-height"]) {
+        root.style.removeProperty(property)
+      }
+    }
+    const updateViewport = () => {
+      frame = undefined
+      // Pinch zoom owns its native viewport and scrolling, not the keyboard layout.
+      if (viewport.scale !== 1) {
+        clearViewportStyles()
+        return
+      }
+      Object.assign(root.style, {
+        position: "fixed",
+        left: "0px",
+        right: "0px",
+        top: `${viewport.offsetTop}px`,
+        height: `${viewport.height}px`,
+        maxHeight: `${viewport.height}px`,
+      })
+      if (document.activeElement !== textarea) return
+      const bounds = form.getBoundingClientRect()
+      const top =
+        bounds.height <= viewport.height ? bounds.top : textarea.getBoundingClientRect().top
+      // Tall previews remain scrollable; keep the input and its following action row reachable.
+      const bottom =
+        bounds.height <= viewport.height ? bounds.bottom : actions.getBoundingClientRect().bottom
+      const visibleBottom = viewport.offsetTop + viewport.height
+      if (bottom > visibleBottom) root.scrollTop += bottom - visibleBottom
+      else if (top < viewport.offsetTop) {
+        root.scrollTop += Math.max(top - viewport.offsetTop, bottom - visibleBottom)
+      }
+    }
+    const scheduleViewportUpdate = () => {
+      if (frame === undefined) frame = requestAnimationFrame(updateViewport)
+    }
+    const observer =
+      typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(scheduleViewportUpdate)
+    observer?.observe(form)
+    viewport.addEventListener("resize", scheduleViewportUpdate)
+    viewport.addEventListener("scroll", scheduleViewportUpdate)
+    form.addEventListener("focusin", scheduleViewportUpdate)
+    updateViewport()
+    return () => {
+      viewport.removeEventListener("resize", scheduleViewportUpdate)
+      viewport.removeEventListener("scroll", scheduleViewportUpdate)
+      form.removeEventListener("focusin", scheduleViewportUpdate)
+      observer?.disconnect()
+      if (frame !== undefined) cancelAnimationFrame(frame)
+      clearViewportStyles()
+      root.scrollTop = 0
+    }
+  }, [emptyComposerKey])
 
   useEffect(() => {
     const root = scrollBodyRef.current
@@ -222,7 +287,8 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       data-motion-surface="screen"
       data-scroll-owner={hasMessages ? undefined : "empty-chat"}
       data-stream-stopped={isStopped ? "true" : "false"}
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 1, y: 12 }}
+      initial={reduceMotion ? { opacity: 0 } : { opacity: 1, y: hasMessages ? 12 : 0 }}
+      ref={mainRef}
       transition={{
         opacity: reduceMotion ? REDUCED_OPACITY_TRANSITION : STATE_TRANSITION,
         y: SPRING_LAYOUT,
@@ -266,7 +332,9 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
         className={hasMessages ? "col-start-1 row-start-2 h-full min-h-0" : "hidden"}
       >
         <ConversationContent
-          className={hasMessages ? "mx-auto w-full max-w-[calc(65ch+2rem)]" : "flex flex-col"}
+          className={
+            hasMessages ? "mx-auto w-full max-w-[calc(65ch+2.5rem)] px-5" : "flex flex-col"
+          }
           onScroll={handleScroll}
           ref={scrollBodyRef}
         >
@@ -323,7 +391,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
       <m.footer
         className={
           hasMessages
-            ? "relative z-10 min-w-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 max-[319px]:py-0"
+            ? "relative z-10 min-w-0 bg-background px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 max-[319px]:py-0"
             : "col-start-1 row-start-2 row-span-2 grid min-w-0 grid-rows-subgrid px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
         }
         aria-label="의료 질문 작성 영역"
@@ -340,7 +408,7 @@ export function ChatShell({ imageNormalizer, transport = defaultTransport }: Cha
         >
           <m.div
             className={hasMessages ? undefined : "row-span-2 grid grid-rows-subgrid"}
-            layout={reduceMotion ? false : "position"}
+            layout={reduceMotion || !hasMessages ? false : "position"}
             transition={SPRING_LAYOUT}
           >
             <ChatComposer

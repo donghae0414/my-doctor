@@ -30,6 +30,10 @@ export async function assertChatGeometry(page: Page): Promise<void> {
   const result = await page.evaluate(() => {
     const root = document.querySelector<HTMLElement>("[data-chat-state]")
     const composer = document.querySelector<HTMLElement>("[data-testid='chat-composer-region']")
+    const isEmpty = root?.dataset["chatState"] === "empty"
+    const viewport = isEmpty && window.visualViewport?.scale === 1 ? window.visualViewport : null
+    const viewportTop = viewport?.offsetTop ?? 0
+    const viewportHeight = viewport?.height ?? window.innerHeight
     const scrollOwners = document.querySelectorAll("[data-scroll-owner='conversation']")
     const controls = [
       ...document.querySelectorAll<HTMLElement>(
@@ -44,7 +48,9 @@ export async function assertChatGeometry(page: Page): Promise<void> {
           height: rect.height,
           left: rect.left,
           right: rect.right,
-          scrollable: element.closest("[data-scroll-owner='conversation']") !== null,
+          scrollable:
+            element.closest("[data-scroll-owner='conversation']") !== null ||
+            (isEmpty && element.closest("form") === null && root.contains(element)),
           top: rect.top,
           width: rect.width,
         }
@@ -55,13 +61,19 @@ export async function assertChatGeometry(page: Page): Promise<void> {
     const composerColumn = composer?.querySelector<HTMLElement>(":scope > div")
     return {
       assistantBodyLeft: assistantBody?.getBoundingClientRect().left,
-      composerBottom: composer?.getBoundingClientRect().bottom,
+      composerBottom: (isEmpty
+        ? composer?.querySelector("form")
+        : composer
+      )?.getBoundingClientRect().bottom,
       composerColumnLeft: composerColumn?.getBoundingClientRect().left,
       controls,
       documentOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       rootHeight: root?.getBoundingClientRect().height,
+      rootTop: root?.getBoundingClientRect().top,
       scrollOwners: scrollOwners.length,
-      viewportHeight: window.innerHeight,
+      viewportBottom: viewportTop + viewportHeight,
+      viewportHeight,
+      viewportTop,
       viewportWidth: document.documentElement.clientWidth,
     }
   })
@@ -74,7 +86,8 @@ export async function assertChatGeometry(page: Page): Promise<void> {
     expect(Math.abs(result.assistantBodyLeft - result.composerColumnLeft)).toBeLessThanOrEqual(1)
   }
   expect(result.rootHeight).toBe(result.viewportHeight)
-  expect(result.composerBottom).toBeLessThanOrEqual(result.viewportHeight)
+  expect(result.rootTop).toBe(result.viewportTop)
+  expect(result.composerBottom).toBeLessThanOrEqual(result.viewportBottom)
   expect(
     result.controls.filter(
       ({ bottom, height, left, right, scrollable, top, width }) =>
@@ -82,7 +95,7 @@ export async function assertChatGeometry(page: Page): Promise<void> {
         width < 43.5 ||
         left < -1 ||
         right > result.viewportWidth + 1 ||
-        (!scrollable && (top < -1 || bottom > result.viewportHeight + 1)),
+        (!scrollable && (top < result.viewportTop - 1 || bottom > result.viewportBottom + 1)),
     ),
   ).toEqual([])
 }

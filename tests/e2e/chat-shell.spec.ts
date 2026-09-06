@@ -18,6 +18,32 @@ const themes = ["light", "dark"] as const
 const emptyPrompt = "산후 회복·아기 돌봄, 무엇이 궁금하세요?"
 const medicalDisclaimer = "AI는 틀릴 수 있어요. 의료 판단은 의료진과 확인하세요."
 
+async function assertMarkerCenteredOnFirstLine(
+  page: import("@playwright/test").Page,
+  targetSelector: string,
+) {
+  const geometry = await page
+    .locator("[data-assistant-marker]")
+    .last()
+    .evaluate((element, selector) => {
+      const target = element.closest("article")?.querySelector(selector)
+      if (!target) throw new Error(`Missing first-line target: ${selector}`)
+      const range = document.createRange()
+      range.selectNodeContents(target)
+      const line = range.getClientRects()[0]
+      if (!line) throw new Error(`Missing first rendered line: ${selector}`)
+      const marker = element.getBoundingClientRect()
+      return {
+        centerError: Math.abs((marker.top + marker.bottom) / 2 - (line.top + line.bottom) / 2),
+        height: marker.height,
+        width: marker.width,
+      }
+    }, targetSelector)
+  expect(geometry.width).toBe(20)
+  expect(geometry.height).toBe(20)
+  expect(geometry.centerError).toBeLessThanOrEqual(1)
+}
+
 test.describe.configure({ mode: "serial" })
 
 async function openFixture(page: import("@playwright/test").Page, theme = "light") {
@@ -59,8 +85,7 @@ test.describe("coarse-pointer composer", () => {
       [attachment, model, send].map((control) => control.boundingBox()),
     )
     const [left, middle, right] = controls
-    if (!left || !middle || !right)
-      throw new Error("Missing footer control")
+    if (!left || !middle || !right) throw new Error("Missing footer control")
     expect(Math.abs(left.y - middle.y)).toBeLessThanOrEqual(1)
     expect(Math.abs(middle.y - right.y)).toBeLessThanOrEqual(1)
     expect(left.x + left.width).toBeLessThan(middle.x)
@@ -109,48 +134,46 @@ test.describe("coarse-pointer composer", () => {
     }
     const marker = page.locator("[data-assistant-marker]")
     const markerBox = await marker.boundingBox()
-    expect(markerBox?.width).toBe(10)
-    expect(markerBox?.height).toBe(10)
+    expect(markerBox?.width).toBe(20)
+    expect(markerBox?.height).toBe(20)
     for (const theme of ["light", "dark"]) {
       await page
         .locator("[data-chat-state]")
         .evaluate((element, value) => element.classList.toggle("dark", value === "dark"), theme)
-      const contrasts = await marker.evaluate((element) => {
-        const canvas = document.createElement("canvas")
-        canvas.width = canvas.height = 1
-        const context = canvas.getContext("2d", { willReadFrequently: true })
-        if (context === null) throw new Error("No color conversion context")
-        const rgb = (color: string) => {
-          context.fillStyle = color
-          context.fillRect(0, 0, 1, 1)
-          return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3)
-        }
-        const luminance = (channels: number[]) =>
-          channels.reduce((sum, channel, index) => {
-            const c = channel / 255
-            return (
-              sum +
-              (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4) *
-                ([0.2126, 0.7152, 0.0722][index] ?? 0)
-            )
-          }, 0)
-        const style = getComputedStyle(element)
-        const markerColor = rgb(style.backgroundColor)
+      const photo = marker.locator("img")
+      await expect(photo).toHaveAttribute("src", "/images/babyface.png")
+      await expect(photo).toHaveAttribute("alt", "")
+      await expect(photo).toHaveCSS("object-fit", "contain")
+      await expect(marker).toHaveCSS("background-color", "rgba(0, 0, 0, 0)")
+      const photoSize = await photo.evaluate(async (element: HTMLImageElement) => {
+        await element.decode()
+        const rect = element.getBoundingClientRect()
+        return { height: rect.height, loaded: element.naturalWidth > 0, width: rect.width }
+      })
+      expect(photoSize, `${theme} marker photo`).toEqual({ height: 20, loaded: true, width: 20 })
+      const geometry = await marker.evaluate((element) => {
+        const body = element.parentElement?.querySelector(":scope > div")
+        if (body === null || body === undefined) throw new Error("Missing assistant body")
+        const rect = element.getBoundingClientRect()
+        const hit = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2,
+        )
         return {
-          markerColor,
-          primaryColor: rgb(style.getPropertyValue("--primary")),
-          // The decorative pulse trough may fall below 3:1; full opacity must not.
-          fullOpacity: ["--background", "--muted"].map((token) => {
-            const background = rgb(style.getPropertyValue(token))
-            const a = luminance(markerColor)
-            const b = luminance(background)
-            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
-          }),
+          bodyLeft: body.getBoundingClientRect().left,
+          left: rect.left,
+          right: rect.right,
+          visible: element.contains(hit),
         }
       })
-      expect(contrasts.markerColor, `${theme} primary marker`).toEqual(contrasts.primaryColor)
-      for (const contrast of contrasts.fullOpacity) expect(contrast).toBeGreaterThanOrEqual(3)
+      expect(geometry.left).toBeGreaterThanOrEqual(0)
+      expect(geometry.right).toBeLessThanOrEqual(geometry.bodyLeft)
+      expect(geometry.visible).toBe(true)
     }
+    await assertMarkerCenteredOnFirstLine(
+      page,
+      "[data-pending-response] [data-pending-phrase][data-active='true']",
+    )
     await page.emulateMedia({ reducedMotion: "reduce" })
     await openFixture(page)
     await textarea.fill("[pending]")
@@ -166,6 +189,10 @@ test.describe("coarse-pointer composer", () => {
             ).length,
       ),
     ).toBe(0)
+    // This held response has no leading paragraph, so the heading really is its first line.
+    await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+    await expect(page.locator(".assistant-response > h2:first-child")).toBeVisible()
+    await assertMarkerCenteredOnFirstLine(page, ".assistant-response > h2:first-child")
     await page.getByRole("button", { name: "응답 중지" }).click()
     await expect(pending).toHaveCount(0)
     await expect(marker).toHaveCount(0)
@@ -232,6 +259,18 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   const streamingAssistant = page.locator("article[data-from='assistant']").last()
   const streamingAssistantBody = streamingAssistant.locator(":scope > div")
   await expect(streamingAssistant.locator("[data-assistant-marker]")).toBeVisible()
+  const markerPhoto = streamingAssistant.locator("[data-assistant-marker] img")
+  await expect(markerPhoto).toHaveAttribute("src", "/images/babyface.png")
+  await expect(markerPhoto).toHaveAttribute("alt", "")
+  await expect(markerPhoto).toHaveAttribute("width", "20")
+  await expect(markerPhoto).toHaveAttribute("height", "20")
+  await expect(markerPhoto).toHaveCSS("object-fit", "contain")
+  const photoSize = await markerPhoto.evaluate(async (element: HTMLImageElement) => {
+    await element.decode()
+    const rect = element.getBoundingClientRect()
+    return { height: rect.height, loaded: element.naturalWidth > 0, width: rect.width }
+  })
+  expect(photoSize).toEqual({ height: 20, loaded: true, width: 20 })
   const streamingBodyLeft = await streamingAssistantBody.evaluate(
     (element) => element.getBoundingClientRect().left,
   )
@@ -241,8 +280,16 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
     .evaluate((element) => {
       const rect = element.getBoundingClientRect()
       const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
-      return { left: rect.left, right: rect.right, visible: hit === element }
+      return {
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        visible: element.contains(hit),
+        width: rect.width,
+      }
     })
+  expect(markerRect.width).toBe(20)
+  expect(markerRect.height).toBe(20)
   expect(markerRect.left).toBeGreaterThanOrEqual(0)
   expect(markerRect.right).toBeLessThanOrEqual(streamingBodyLeft)
   expect(markerRect.visible).toBe(true)
@@ -265,6 +312,11 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
   })
 
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-continue")))
+  await expect(
+    streamingAssistant.locator(".assistant-response h2[data-streamdown='heading-2']"),
+  ).toBeVisible()
+  // This response already starts with a paragraph; a later heading must not move its marker.
+  await assertMarkerCenteredOnFirstLine(page, ".assistant-response > p:first-child")
   await page.evaluate(() => window.dispatchEvent(new Event("chat-shell-finish")))
   await expect(page.getByRole("heading", { name: "아기 상태 확인" })).toBeVisible()
   await expect(streamingAssistant.locator("[data-assistant-marker]")).toHaveCount(0)
@@ -351,10 +403,12 @@ test("streams the exact chat journey without persistence or unsafe sources", asy
       const rect = element.getBoundingClientRect()
       return rect.left + rect.width / 2
     })
-  const conversationCenter = await page.getByRole("log", { name: "상담 대화" }).evaluate((element) => {
-    const rect = element.getBoundingClientRect()
-    return rect.left + rect.width / 2
-  })
+  const conversationCenter = await page
+    .getByRole("log", { name: "상담 대화" })
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return rect.left + rect.width / 2
+    })
   expect(Math.abs(latestCenter - conversationCenter)).toBeLessThanOrEqual(1)
   const awayPosition = await scrollBody.evaluate((element) => element.scrollTop)
   const detachedGrowth = await growAnswer()

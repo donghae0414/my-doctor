@@ -17,8 +17,9 @@ const SCROLL_HANDLER = /(?:addEventListener\s*\(\s*["']scroll|\bonScroll\s*=)/u
 const SPATIAL_MOTION =
   /(?:whileTap=|\blayout(?:=|\s)|@keyframes|animate-\[|active:scale|transition-transform)/u
 const LOOP_REPEAT = /repeat\s*:/gu
+// A quoted Tailwind selector can contain ">" without ending the JSX opening tag.
 const ASSISTANT_MARKER_LOOP =
-  /<m\.span\b[\s\S]*?data-assistant-marker=""[\s\S]*?repeat:\s*Number\.POSITIVE_INFINITY[\s\S]*?\/>/u
+  /<m\.span\b(?:"[^"]*"|[^">])*data-assistant-marker=""(?:"[^"]*"|[^">])*repeat:\s*Number\.POSITIVE_INFINITY(?:"[^"]*"|[^">])*>\s*<Image\b[^>]*\/>\s*<\/m\.span>/u
 const ASSISTANT_MARKER_SOURCE = "components/ai-elements/message.tsx"
 
 function sourceFiles(directory: string): readonly string[] {
@@ -73,12 +74,14 @@ describe("Todo12 motion source contract", () => {
     expect(offenders).toEqual([])
   })
 
-  it("allows only ChatShell's conversation scroll tracking, not scroll-driven motion", () => {
+  it("allows only ChatShell's conversation tracking and empty visual viewport scroll", () => {
     const offenders = SOURCE_ROOTS.flatMap(sourceFiles).flatMap((path) => {
       const source = readFileSync(resolve(path), "utf8")
       const remaining =
         path === "components/chat/chat-shell.tsx"
-          ? source.replace("onScroll={handleScroll}", "")
+          ? source
+              .replace("onScroll={handleScroll}", "")
+              .replace('viewport.addEventListener("scroll", scheduleViewportUpdate)', "")
           : source
       return SCROLL_HANDLER.test(remaining) ? [path] : []
     })

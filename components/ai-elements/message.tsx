@@ -1,6 +1,7 @@
 "use client"
 
 import { m, useReducedMotion } from "motion/react"
+import Image from "next/image"
 import type { ComponentProps, ReactNode } from "react"
 import { Streamdown } from "streamdown"
 
@@ -46,14 +47,23 @@ export function Message({ children, className, from, streaming = false, ...props
             <m.span
               animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.6, 1] }}
               aria-hidden="true"
-              className="absolute top-1.5 -start-[13px] size-2.5 rounded-full bg-primary"
+              className="absolute top-0.5 -start-5 size-5 group-has-[[data-pending-response]]:top-0 group-has-[.assistant-response>h1:first-child]:top-2 group-has-[.assistant-response>h2:first-child]:top-1.5 group-has-[.assistant-response>:is(h3,h4):first-child]:top-1 group-has-[.assistant-response>h6:first-child]:top-0"
               data-assistant-marker=""
               transition={
                 reduceMotion
                   ? { duration: 0 }
                   : { duration: 1.4, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY }
               }
-            />
+            >
+              <Image
+                alt=""
+                className="size-5 object-contain"
+                height={20}
+                src="/images/babyface.png"
+                unoptimized
+                width={20}
+              />
+            </m.span>
           ) : null}
           <div className="flex min-w-0 flex-col gap-2">{children}</div>
         </>
@@ -84,7 +94,7 @@ export function MessageResponse({ className, ...props }: MessageResponseProps) {
   return (
     <Streamdown
       className={cn(
-        "size-full [&_a]:overflow-wrap-anywhere [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_a]:decoration-primary [&_a]:decoration-2 [&_a]:underline-offset-4 [&_p]:my-0 [&_p+p]:mt-3",
+        "assistant-response size-full [&_a]:overflow-wrap-anywhere [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_a]:decoration-primary [&_a]:decoration-2 [&_a]:underline-offset-4 [&_p]:my-0 [&_p+p]:mt-3",
         className,
       )}
       {...props}
